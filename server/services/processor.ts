@@ -1,12 +1,11 @@
-import youtubedl from 'youtube-dl-exec';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { sanitizeFilename } from '../utils/format';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // In-memory cache for resolved CDN URLs (keyed by YouTube URL + type)
 const cdnUrlCache = new Map<string, { url: string; expiresAt: number }>();
@@ -22,19 +21,30 @@ export interface ProcessMediaOptions {
  * Gets the direct CDN stream URL via yt-dlp binary.
  */
 function getYtDlpBin(): string {
+  const cwd = process.cwd();
+
   if (process.platform === 'win32') {
-    const winBin = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
-    if (fs.existsSync(winBin)) return `"${winBin}"`;
-    const localBin = path.join(process.cwd(), 'bin', 'yt-dlp.exe');
-    if (fs.existsSync(localBin)) return `"${localBin}"`;
-    return 'yt-dlp';
+    const candidates = [
+      path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe'),
+      path.join(cwd, 'bin', 'yt-dlp.exe'),
+    ];
+    return candidates.find(p => fs.existsSync(p)) || 'yt-dlp';
   }
-  const npmLinuxBin = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
-  if (fs.existsSync(npmLinuxBin)) return `"${npmLinuxBin}"`;
-  const localBin = path.join(process.cwd(), 'bin', 'yt-dlp');
-  if (fs.existsSync(localBin)) return `"${localBin}"`;
-  const localLinuxBin = path.join(process.cwd(), 'bin', 'yt-dlp_linux');
-  if (fs.existsSync(localLinuxBin)) return `"${localLinuxBin}"`;
+
+  // Linux (Render / other) — prioritise the standalone binary downloaded at build time
+  const candidates = [
+    '/usr/local/bin/yt-dlp',                               // pip3 install on Render (system-wide)
+    `${process.env.HOME || '/root'}/.local/bin/yt-dlp`,    // pip3 install --user
+    path.join(cwd, 'bin', 'yt-dlp'),                       // render.yaml curl fallback
+    path.join(cwd, 'bin', 'yt-dlp_linux'),
+    path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+    '/usr/bin/yt-dlp',
+  ];
+  const found = candidates.find(p => fs.existsSync(p));
+  if (found) {
+    console.log('[NovaFetch] Using yt-dlp binary:', found);
+    return found;
+  }
   return 'yt-dlp';
 }
 
@@ -46,39 +56,33 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
     return cached.url;
   }
 
-  // 1. Try youtube-dl-exec wrapper
+  // Use standalone yt-dlp binary directly (no Python dependency)
   try {
-    const rawOutput = await youtubedl(youtubeUrl, {
-      getUrl: true,
-      format: audioOnly ? 'ba/b' : 'b/best[ext=mp4]/best',
-      noPlaylist: true,
-      noWarnings: true
-    });
+    const bin = getYtDlpBin();
+    const format = audioOnly ? 'ba/b' : 'b/best[ext=mp4]/best';
+    const args = [
+      '--get-url',
+      '-f', format,
+      '--no-playlist',
+      '--no-warnings',
+      '--quiet',
+      youtubeUrl,
+    ];
 
-    const url = String(rawOutput).trim().split('\n')[0].trim();
-    if (url.startsWith('http')) {
-      cdnUrlCache.set(cacheKey, { url, expiresAt: Date.now() + 4 * 60 * 1000 });
-      console.log('[NovaFetch Engine] Resolved real CDN stream URL:', url.slice(0, 60));
-      return url;
-    }
-  } catch (err: any) {
-    console.error('[NovaFetch Engine] Primary youtube-dl-exec error:', err?.message || err);
-  }
+    console.log('[NovaFetch Engine] Calling yt-dlp:', bin, args.join(' '));
+    const { stdout, stderr } = await execFileAsync(bin, args, { timeout: 30000 });
+    if (stderr?.trim()) console.warn('[NovaFetch Engine] yt-dlp stderr:', stderr.slice(0, 300));
 
-  // 2. Fallback to CLI command
-  try {
-    const ytdlpBin = getYtDlpBin();
-    const format = audioOnly ? '"ba/b"' : '"b/best[ext=mp4]/best"';
-    const cmd = `${ytdlpBin} -f ${format} --get-url --no-playlist --no-warnings "${youtubeUrl}"`;
-    const { stdout } = await execAsync(cmd, { timeout: 30000 });
     const url = stdout.trim().split('\n')[0].trim();
     if (url.startsWith('http')) {
       cdnUrlCache.set(cacheKey, { url, expiresAt: Date.now() + 4 * 60 * 1000 });
+      console.log('[NovaFetch Engine] Resolved CDN URL:', url.slice(0, 80));
       return url;
     }
+    console.error('[NovaFetch Engine] yt-dlp returned no valid URL:', stdout.slice(0, 200));
     return null;
   } catch (err: any) {
-    console.error('[NovaFetch Engine] Stream resolution fallback error:', err?.message || err);
+    console.error('[NovaFetch Engine] yt-dlp execution error:', err?.message || err);
     return null;
   }
 }
