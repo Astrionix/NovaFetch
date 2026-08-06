@@ -16,18 +16,18 @@ export async function getYouTubeMetadata(url: string) {
   let thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
   let durationSec = 240;
 
-  // 1. YouTube InnerTube Player API (Sub-80ms exact duration & metadata)
+  // 1. YouTube InnerTube Player API (Sub-80ms exact duration & metadata via MWEB client)
   try {
     const itRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
         'Accept-Language': 'en-US,en;q=0.9'
       },
       body: JSON.stringify({
         videoId,
-        context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00' } }
+        context: { client: { clientName: 'MWEB', clientVersion: '2.20240101.00.00' } }
       })
     });
     if (itRes.ok) {
