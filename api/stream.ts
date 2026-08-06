@@ -18,14 +18,20 @@ function getYtDlpPath(): string {
   // Vercel Linux environment
   const tmpBin = '/tmp/yt-dlp';
   if (!existsSync(tmpBin)) {
-    // Bundled binary is at bin/yt-dlp_linux relative to project root
-    const bundled = path.join(process.cwd(), 'bin', 'yt-dlp_linux');
-    if (existsSync(bundled)) {
+    // Try multiple paths — Vercel bundles includeFiles relative to the function
+    const candidates = [
+      path.join(__dirname, '..', 'bin', 'yt-dlp_linux'),   // api/../bin/
+      path.join(__dirname, 'bin', 'yt-dlp_linux'),          // api/bin/
+      path.join(process.cwd(), 'bin', 'yt-dlp_linux'),      // /var/task/bin/
+      '/var/task/bin/yt-dlp_linux',                          // absolute fallback
+    ];
+    const bundled = candidates.find(p => existsSync(p));
+    if (bundled) {
       copyFileSync(bundled, tmpBin);
       chmodSync(tmpBin, '755');
-      console.log('[stream] Copied yt-dlp binary to /tmp');
+      console.log('[stream] Copied yt-dlp from', bundled, 'to /tmp');
     } else {
-      throw new Error('yt-dlp binary not found at ' + bundled);
+      throw new Error('yt-dlp binary not found. Tried: ' + candidates.join(', '));
     }
   }
   return tmpBin;
