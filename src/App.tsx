@@ -65,6 +65,7 @@ export function App() {
   const [metadata, setMetadata] = useState<MediaMetadata | null>(null);
   const [selectedFormat, setSelectedFormat] = useState<FormatOption | null>(null);
   const [progress, setProgress] = useState(0);
+  const [audioError, setAudioError] = useState(false);
 
   // PWA & Connectivity state
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -120,6 +121,7 @@ export function App() {
     setStage('analyzing');
     setMetadata(null);
     setSelectedFormat(null);
+    setAudioError(false);
     try {
       const data = await analyzeMediaUrl(trimmed);
       setMetadata(data);
@@ -159,7 +161,7 @@ export function App() {
   // ── Reset ──────────────────────────────────────────────────────────────────
   const reset = () => {
     setStage('idle'); setMetadata(null); setSelectedFormat(null);
-    setUrl(''); setError(''); setProgress(0);
+    setUrl(''); setError(''); setProgress(0); setAudioError(false);
   };
 
   const isVideo = selectedFormat?.type === 'video';
@@ -319,10 +321,18 @@ export function App() {
                   <div className="player-name">{metadata.title}</div>
                   <span className="player-badge">{selectedFormat.quality}</span>
                 </div>
-                {isVideo
-                  ? <video src={previewUrl} controls preload="metadata" />
-                  : <audio src={previewUrl} controls preload="metadata" />
-                }
+                {audioError && metadata.url ? (
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${metadata.url.includes('v=') ? metadata.url.split('v=')[1].split('&')[0] : metadata.url.split('/').pop()}?autoplay=1&enablejsapi=1`}
+                    title="NovaFetch Stream Player"
+                    style={{ width: '100%', height: isVideo ? '260px' : '160px', borderRadius: '12px', border: 'none', marginTop: '12px' }}
+                    allow="autoplay; encrypted-media"
+                  />
+                ) : isVideo ? (
+                  <video src={previewUrl} controls preload="metadata" onError={() => setAudioError(true)} />
+                ) : (
+                  <audio src={previewUrl} controls preload="metadata" onError={() => setAudioError(true)} />
+                )}
               </div>
 
               <div className="action-row">
