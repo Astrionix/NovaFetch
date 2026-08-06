@@ -22,37 +22,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let rawUrl = '';
-    if (typeof req.body === 'string') {
-      try {
-        const parsed = JSON.parse(req.body);
-        rawUrl = parsed?.url || '';
-      } catch {
-        rawUrl = req.body;
+    if (req.body) {
+      if (typeof req.body === 'string') {
+        try {
+          const parsed = JSON.parse(req.body);
+          rawUrl = parsed?.url || req.body;
+        } catch {
+          rawUrl = req.body;
+        }
+      } else if (typeof req.body === 'object') {
+        rawUrl = (req.body as any)?.url || (req.body as any)?.id || '';
       }
-    } else if (req.body && typeof req.body === 'object') {
-      rawUrl = (req.body as any)?.url || '';
     }
 
     if (!rawUrl && req.query?.url) {
       rawUrl = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
     }
 
-    let url = (rawUrl || '').trim();
-    if (!url) {
-      url = 'https://www.youtube.com/watch?v=uw6etHCmu4g';
+    let url = String(rawUrl || '').trim();
+    if (!url || url === '{}') {
+      url = 'https://www.youtube.com/watch?v=CHpq1tGoSEI';
     }
 
     // Extract YouTube ID if 11 chars
     let videoId = '';
-    const match = url.match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})/);
-    if (match) {
+    const match = url.match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^|\?v=)([a-zA-Z0-9_-]{11})/);
+    if (match && match[1]) {
       videoId = match[1];
     } else if (/^[a-zA-Z0-9_-]{11}$/.test(url)) {
       videoId = url;
-      url = `https://www.youtube.com/watch?v=${videoId}`;
     }
 
-    if (!videoId) videoId = 'uw6etHCmu4g';
+    if (!videoId) videoId = 'CHpq1tGoSEI';
     const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
     let title = 'High Definition Media Stream';
