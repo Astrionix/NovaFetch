@@ -51,7 +51,7 @@ async function getAudioUrl(youtubeUrl: string): Promise<string> {
 
   const { stdout, stderr } = await execFileAsync(bin, [
     '--get-url',
-    '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+    '-f', 'ba/b',
     '--no-playlist',
     '--no-warnings',
     '--quiet',

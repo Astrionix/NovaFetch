@@ -48,7 +48,7 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
   try {
     const rawOutput = await youtubedl(youtubeUrl, {
       getUrl: true,
-      format: audioOnly ? 'bestaudio' : 'best[ext=mp4]/best',
+      format: audioOnly ? 'ba/b' : 'b/best[ext=mp4]/best',
       noPlaylist: true,
       noWarnings: true
     });
@@ -66,7 +66,7 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
   // 2. Fallback to CLI command
   try {
     const ytdlpBin = getYtDlpBin();
-    const format = audioOnly ? '"bestaudio"' : '"best[ext=mp4]/best"';
+    const format = audioOnly ? '"ba/b"' : '"b/best[ext=mp4]/best"';
     const cmd = `${ytdlpBin} -f ${format} --get-url --no-playlist --no-warnings "${youtubeUrl}"`;
     const { stdout } = await execAsync(cmd, { timeout: 30000 });
     const url = stdout.trim().split('\n')[0].trim();
