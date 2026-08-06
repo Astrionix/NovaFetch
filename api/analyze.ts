@@ -62,8 +62,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
     let durationSec = 240;
 
-    // Parallel sub-200ms fetch: YouTube oEmbed + InnerTube WEB_REMIX API
-    const [oembedRes, itData] = await Promise.all([
+    // Parallel sub-200ms fetch: YouTube oEmbed + WEB_REMIX + ANDROID InnerTube clients
+    const [oembedRes, itData1, itData2] = await Promise.all([
       fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch('https://www.youtube.com/youtubei/v1/player', {
         method: 'POST',
@@ -76,6 +76,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           videoId,
           context: { client: { clientName: 'WEB_REMIX', clientVersion: '1.20240101.00.00' } }
         })
+      }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'com.google.android.youtube/19.05.36 (Linux; U; Android 11)'
+        },
+        body: JSON.stringify({
+          videoId,
+          context: { client: { clientName: 'ANDROID', clientVersion: '19.05.36', androidSdkVersion: 30 } }
+        })
       }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
@@ -85,17 +96,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (oembedRes.thumbnail_url) thumbnail = oembedRes.thumbnail_url;
     }
 
+    const itData = itData1 || itData2;
+    const secStr = itData?.videoDetails?.lengthSeconds || itData?.microformat?.playerMicroformatRenderer?.lengthSeconds;
+    if (secStr) {
+      const sec = parseInt(secStr, 10);
+      if (sec > 0) durationSec = sec;
+    }
+
     if (itData?.videoDetails) {
       const vd = itData.videoDetails;
       if (vd.title && title === 'High Definition Media Stream') title = vd.title;
       if (vd.author && author === 'YouTube Creator') author = vd.author;
-      if (vd.lengthSeconds) {
-        const sec = parseInt(vd.lengthSeconds, 10);
-        if (sec > 0) durationSec = sec;
-      }
       if (vd.thumbnail?.thumbnails?.length) {
         const thumbs = vd.thumbnail.thumbnails;
         thumbnail = thumbs[thumbs.length - 1].url || thumbnail;
+      }
+    }
+
+    // Secondary fallback: Fast delegation to Render engine if local InnerTube duration was unresolved
+    if (durationSec === 240) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: fullUrl }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (renderRes.ok) {
+          const renderData = await renderRes.json();
+          if (renderData && renderData.duration && renderData.duration !== 240) {
+            return res.status(200).json(renderData);
+          }
+        }
+      } catch {
+        // use local durationSec fallback
       }
     }
 
