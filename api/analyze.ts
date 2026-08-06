@@ -180,6 +180,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       id: fallbackId,
       url: fallbackUrl,
+      catchError: err?.message || String(err),
+      catchStack: String(err?.stack || ''),
       title: 'YouTube Media Stream',
       author: 'YouTube Verified Creator',
       avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
