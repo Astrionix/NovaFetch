@@ -41,8 +41,12 @@ export async function getYouTubeMetadata(url: string) {
     if (pageRes.ok) {
       const html = await pageRes.text();
       const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+      const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
       if (lengthMatch && lengthMatch[1]) {
         const parsedSec = parseInt(lengthMatch[1], 10);
+        if (parsedSec > 0) durationSec = parsedSec;
+      } else if (approxMatch && approxMatch[1]) {
+        const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
         if (parsedSec > 0) durationSec = parsedSec;
       }
     }

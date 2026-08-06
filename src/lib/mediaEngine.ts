@@ -5,10 +5,10 @@ export function getApiBaseUrl(): string {
   if (import.meta.env.VITE_API_BASE) {
     return import.meta.env.VITE_API_BASE.replace(/\/$/, '');
   }
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return 'https://novafetch-c3jm.onrender.com/api';
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:3001/api';
   }
-  return 'http://localhost:3001/api';
+  return '/api';
 }
 
 /**
