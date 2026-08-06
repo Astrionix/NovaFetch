@@ -1,3 +1,4 @@
+import youtubedl from 'youtube-dl-exec';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
@@ -18,10 +19,16 @@ export interface ProcessMediaOptions {
 }
 
 /**
- * Gets the direct CDN stream URL via yt-dlp --get-url.
- * Caches results for 4 minutes (YouTube CDN URLs expire in ~6 hours).
+ * Gets the direct CDN stream URL via yt-dlp binary.
  */
 function getYtDlpBin(): string {
+  if (process.platform === 'win32') {
+    const winBin = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
+    if (fs.existsSync(winBin)) return `"${winBin}"`;
+    const localBin = path.join(process.cwd(), 'bin', 'yt-dlp.exe');
+    if (fs.existsSync(localBin)) return `"${localBin}"`;
+    return 'yt-dlp';
+  }
   const localBin = path.join(process.cwd(), 'bin', 'yt-dlp');
   if (fs.existsSync(localBin)) return `"${localBin}"`;
   const localLinuxBin = path.join(process.cwd(), 'bin', 'yt-dlp_linux');
@@ -37,6 +44,26 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
     return cached.url;
   }
 
+  // 1. Try youtube-dl-exec wrapper
+  try {
+    const rawOutput = await youtubedl(youtubeUrl, {
+      getUrl: true,
+      format: audioOnly ? 'bestaudio' : 'best[ext=mp4]/best',
+      noPlaylist: true,
+      noWarnings: true
+    });
+
+    const url = String(rawOutput).trim().split('\n')[0].trim();
+    if (url.startsWith('http')) {
+      cdnUrlCache.set(cacheKey, { url, expiresAt: Date.now() + 4 * 60 * 1000 });
+      console.log('[NovaFetch Engine] Resolved real CDN stream URL:', url.slice(0, 60));
+      return url;
+    }
+  } catch (err: any) {
+    console.error('[NovaFetch Engine] Primary youtube-dl-exec error:', err?.message || err);
+  }
+
+  // 2. Fallback to CLI command
   try {
     const ytdlpBin = getYtDlpBin();
     const format = audioOnly ? '"bestaudio"' : '"best[ext=mp4]/best"';
@@ -49,7 +76,7 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
     }
     return null;
   } catch (err: any) {
-    console.error('[NovaFetch Engine] Stream resolution error:', err?.message || err);
+    console.error('[NovaFetch Engine] Stream resolution fallback error:', err?.message || err);
     return null;
   }
 }
