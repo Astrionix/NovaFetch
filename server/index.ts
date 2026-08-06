@@ -25,6 +25,47 @@ fastify.get('/api/health', async () => {
   return { status: 'online', engine: 'NovaFetch Fastify Node.js Engine v2.4', timestamp: new Date().toISOString() };
 });
 
+// Debug endpoint for diagnostic environment inspection
+fastify.get('/api/debug', async () => {
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
+  const { getDirectStreamUrl } = await import('./services/processor');
+
+  let pythonInfo = 'N/A';
+  let ytdlpInfo = 'N/A';
+  let testStreamResult = 'N/A';
+
+  try {
+    const { stdout } = await execAsync('python3 --version');
+    pythonInfo = stdout.trim();
+  } catch (e: any) {
+    pythonInfo = 'ERR: ' + e.message;
+  }
+
+  try {
+    const { stdout } = await execAsync('yt-dlp --version');
+    ytdlpInfo = stdout.trim();
+  } catch (e: any) {
+    ytdlpInfo = 'ERR: ' + e.message;
+  }
+
+  try {
+    const url = await getDirectStreamUrl('https://www.youtube.com/watch?v=CHpq1tGoSEI', true);
+    testStreamResult = url || 'NULL (failed)';
+  } catch (e: any) {
+    testStreamResult = 'ERR: ' + e.message;
+  }
+
+  return {
+    platform: process.platform,
+    pythonInfo,
+    ytdlpInfo,
+    testStreamResult,
+    timestamp: new Date().toISOString()
+  };
+});
+
 // Root API route
 fastify.get('/', async () => {
   return {
