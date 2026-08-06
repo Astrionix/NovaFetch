@@ -6,6 +6,21 @@ function formatSeconds(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+function extractYouTubeId(input: string): string {
+  if (!input) return 'CHpq1tGoSEI';
+  const trimmed = input.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  try {
+    const u = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('/')[0] || 'CHpq1tGoSEI';
+    const vParam = u.searchParams.get('v');
+    if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) return vParam;
+  } catch { /* ignore */ }
+  const m = trimmed.match(/(?:v=|\/embed\/|\/shorts\/|\/v\/)([a-zA-Z0-9_-]{11})/);
+  if (m && m[1]) return m[1];
+  return 'CHpq1tGoSEI';
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,21 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rawUrl = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
     }
 
-    let url = String(rawUrl || '').trim();
-    if (!url || url === '{}') {
-      url = 'https://www.youtube.com/watch?v=CHpq1tGoSEI';
-    }
-
-    // Extract YouTube ID if 11 chars
-    let videoId = '';
-    const match = url.match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^|\?v=)([a-zA-Z0-9_-]{11})/);
-    if (match && match[1]) {
-      videoId = match[1];
-    } else if (/^[a-zA-Z0-9_-]{11}$/.test(url)) {
-      videoId = url;
-    }
-
-    if (!videoId) videoId = 'CHpq1tGoSEI';
+    const videoId = extractYouTubeId(String(rawUrl || ''));
     const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
     let title = 'High Definition Media Stream';
