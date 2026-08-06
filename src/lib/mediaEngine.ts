@@ -107,7 +107,9 @@ function createDefaultFormats(isAudioOnly: boolean): FormatOption[] {
 
   return [
     { id: 'a-320k', label: 'Audio MP3 (320kbps)', type: 'audio', quality: '320kbps', extension: 'mp3', estimatedSizeMB: 12.8, bitrate: '320 kbps', codec: 'MP3 LAME', badge: 'HIGH RES', isPopular: true },
-    { id: 'v-1080p', label: '1080p Full HD', type: 'video', quality: '1080p', resolution: '1920x1080', extension: 'mp4', estimatedSizeMB: 110.5, fps: 60, bitrate: '12 Mbps', codec: 'H.264', badge: 'PRO HD', isPopular: true },
+    { id: 'v-4k', label: '4K Ultra HD (2160p)', type: 'video', quality: '4K 2160p', resolution: '3840x2160', extension: 'mp4', estimatedSizeMB: 380.0, fps: 60, bitrate: '45 Mbps', codec: 'H.264', badge: '4K ULTRA', isPopular: true },
+    { id: 'v-2k', label: '2K QHD (1440p)', type: 'video', quality: '2K 1440p', resolution: '2560x1440', extension: 'mp4', estimatedSizeMB: 210.0, fps: 60, bitrate: '24 Mbps', codec: 'H.264', badge: '2K QHD' },
+    { id: 'v-1080p', label: '1080p Full HD', type: 'video', quality: '1080p', resolution: '1920x1080', extension: 'mp4', estimatedSizeMB: 110.5, fps: 60, bitrate: '12 Mbps', codec: 'H.264', badge: 'PRO HD' },
     { id: 'v-720p', label: '720p HD', type: 'video', quality: '720p', resolution: '1280x720', extension: 'mp4', estimatedSizeMB: 48.0, fps: 30, bitrate: '5 Mbps', codec: 'H.264' },
     { id: 'v-480p', label: '480p SD', type: 'video', quality: '480p', resolution: '854x480', extension: 'mp4', estimatedSizeMB: 24.0, fps: 30, bitrate: '2.5 Mbps', codec: 'H.264' }
   ];

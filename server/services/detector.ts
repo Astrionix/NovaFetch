@@ -6,12 +6,15 @@ export type PlatformType =
   | 'instagram'
   | 'twitter'
   | 'twitch'
+  | 'reddit'
+  | 'spotify'
   | 'generic';
 
 export interface PlatformMatch {
   platform: PlatformType;
   displayName: string;
   isAudioOnly: boolean;
+  isPlaylist: boolean;
   normalizedUrl: string;
 }
 
@@ -24,29 +27,37 @@ export function detectPlatform(rawUrl: string): PlatformMatch {
   }
 
   const lowerUrl = trimmed.toLowerCase();
+  const isPlaylist = lowerUrl.includes('list=') || lowerUrl.includes('/playlist') || lowerUrl.includes('/album');
 
   if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
-    return { platform: 'youtube', displayName: 'YouTube', isAudioOnly: false, normalizedUrl: trimmed };
+    return { platform: 'youtube', displayName: 'YouTube', isAudioOnly: false, isPlaylist, normalizedUrl: trimmed };
   }
   if (lowerUrl.includes('vimeo.com')) {
-    return { platform: 'vimeo', displayName: 'Vimeo', isAudioOnly: false, normalizedUrl: trimmed };
+    return { platform: 'vimeo', displayName: 'Vimeo', isAudioOnly: false, isPlaylist: false, normalizedUrl: trimmed };
   }
   if (lowerUrl.includes('soundcloud.com')) {
-    return { platform: 'soundcloud', displayName: 'SoundCloud', isAudioOnly: true, normalizedUrl: trimmed };
+    return { platform: 'soundcloud', displayName: 'SoundCloud', isAudioOnly: true, isPlaylist, normalizedUrl: trimmed };
   }
   if (lowerUrl.includes('tiktok.com')) {
-    return { platform: 'tiktok', displayName: 'TikTok', isAudioOnly: false, normalizedUrl: trimmed };
+    return { platform: 'tiktok', displayName: 'TikTok', isAudioOnly: false, isPlaylist: false, normalizedUrl: trimmed };
   }
   if (lowerUrl.includes('instagram.com')) {
-    return { platform: 'instagram', displayName: 'Instagram', isAudioOnly: false, normalizedUrl: trimmed };
+    return { platform: 'instagram', displayName: 'Instagram', isAudioOnly: false, isPlaylist: false, normalizedUrl: trimmed };
   }
   if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) {
-    return { platform: 'twitter', displayName: 'X (Twitter)', isAudioOnly: false, normalizedUrl: trimmed };
+    return { platform: 'twitter', displayName: 'X (Twitter)', isAudioOnly: false, isPlaylist: false, normalizedUrl: trimmed };
   }
   if (lowerUrl.includes('twitch.tv')) {
-    return { platform: 'twitch', displayName: 'Twitch', isAudioOnly: false, normalizedUrl: trimmed };
+    return { platform: 'twitch', displayName: 'Twitch', isAudioOnly: false, isPlaylist: false, normalizedUrl: trimmed };
+  }
+  if (lowerUrl.includes('reddit.com') || lowerUrl.includes('v.redd.it')) {
+    return { platform: 'reddit', displayName: 'Reddit', isAudioOnly: false, isPlaylist: false, normalizedUrl: trimmed };
+  }
+  if (lowerUrl.includes('spotify.com')) {
+    return { platform: 'spotify', displayName: 'Spotify', isAudioOnly: true, isPlaylist, normalizedUrl: trimmed };
   }
 
   const isAudio = lowerUrl.includes('.mp3') || lowerUrl.includes('audio');
-  return { platform: 'generic', displayName: 'Generic Stream', isAudioOnly: isAudio, normalizedUrl: trimmed };
+  return { platform: 'generic', displayName: 'Generic Stream', isAudioOnly: isAudio, isPlaylist, normalizedUrl: trimmed };
 }
+

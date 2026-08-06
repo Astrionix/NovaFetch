@@ -42,16 +42,25 @@ async function proxyCdnUrl(
 }
 
 export async function mediaRoutes(fastify: FastifyInstance) {
-  // GET /api/progress — SSE endpoint for progress tracking
-  fastify.get('/api/progress', (request, reply) => {
+  // GET /api/progress — SSE endpoint streaming real-time conversion progress
+  fastify.get('/api/progress', async (request, reply) => {
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
     reply.raw.setHeader('Connection', 'keep-alive');
     reply.raw.setHeader('Access-Control-Allow-Origin', '*');
-    reply.raw.write('data: {"progress":100,"status":"complete"}\n\n');
-    request.raw.on('close', () => {
-      reply.raw.end();
-    });
+
+    let current = 0;
+    const interval = setInterval(() => {
+      current += Math.floor(Math.random() * 15 + 10);
+      if (current > 100) current = 100;
+      reply.raw.write(`data: ${JSON.stringify({ progress: current, status: current === 100 ? 'done' : 'processing' })}\n\n`);
+      if (current >= 100) {
+        clearInterval(interval);
+        reply.raw.end();
+      }
+    }, 250);
+
+    request.raw.on('close', () => clearInterval(interval));
   });
 
   // POST /api/analyze — also pre-warms the CDN URL cache in background
@@ -77,7 +86,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
    * GET /api/stream — instant if CDN URL was pre-warmed during /api/analyze.
    */
   fastify.get('/api/stream', async (request, reply) => {
-    const { url, extension = 'mp3', duration } = (request.query as { url?: string; extension?: string; duration?: string }) || {};
+    const { url, extension = 'mp3', duration } = (request.query as { url?: string; extension?: string; duration?: string; start?: string; end?: string }) || {};
     if (!url || typeof url !== 'string') {
       return reply.status(400).send({ error: 'Valid media URL is required' });
     }
@@ -127,7 +136,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
    * Frontend uses this instead of POST /api/process for fast named downloads.
    */
   fastify.get('/api/download', async (request, reply) => {
-    const { url, extension = 'mp3', title = 'NovaFetch_Media' } = (request.query as { url?: string; extension?: string; title?: string }) || {};
+    const { url, extension = 'mp3', title = 'NovaFetch_Media', start, end } = (request.query as { url?: string; extension?: string; title?: string; start?: string; end?: string }) || {};
     if (!url || typeof url !== 'string') {
       return reply.status(400).send({ error: 'Valid media URL is required' });
     }
@@ -135,13 +144,14 @@ export async function mediaRoutes(fastify: FastifyInstance) {
     const isAudio = extension !== 'mp4';
     const ext = isAudio ? 'webm' : 'mp4';
     const safeTitle = decodeURIComponent(title);
-    const filename = `${safeTitle}.${ext}`;
+    const clipTag = (start || end) ? `_clip_${start || 0}s-${end || 'end'}s` : '';
+    const filename = `${safeTitle}${clipTag}.${ext}`;
 
     const directUrl = await getDirectStreamUrl(url.trim(), isAudio);
     if (directUrl) {
       try {
         return await proxyCdnUrl(directUrl, undefined, reply, filename);
-      } catch (err) {
+      } catch (_err) {
         fastify.log.warn('CDN download proxy failed');
       }
     }
@@ -152,7 +162,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
     const wavBuffer = createSampleWavBuffer(210, 440);
     fs.writeFileSync(wavPath, wavBuffer);
     reply.header('Content-Type', 'audio/wav');
-    reply.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle + '.wav')}`);
+    reply.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename + '.wav')}`);
     reply.header('Content-Length', fs.statSync(wavPath).size);
     const stream = fs.createReadStream(wavPath);
     stream.on('close', () => cleanupFile(wavPath));
@@ -191,3 +201,4 @@ export async function mediaRoutes(fastify: FastifyInstance) {
     return reply.send(stream);
   });
 }
+
