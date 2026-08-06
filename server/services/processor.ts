@@ -70,30 +70,38 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
     return cached.url;
   }
 
-  try {
-    const bin = await ensureFreshYtDlp();
-    const format = audioOnly ? 'bestaudio/b/best' : 'bestvideo+bestaudio/b/best';
-    const args = [
-      '--get-url',
-      '-f', format,
-      '--no-playlist',
-      '--no-warnings',
-      '--quiet',
-      cleanUrl,
-    ];
+  // Try multiple player clients — datacenter IPs (Render/Vercel) get blocked by the
+  // default WEB client; tv_embedded and web_creator bypass YouTube's bot-detection.
+  const playerClients = ['tv_embedded,web_creator', 'android,tv_embedded', 'web'];
 
-    const { stdout, stderr } = await execFileAsync(bin, args, { timeout: 30000 });
-    if (stderr?.trim()) console.warn('[NovaFetch Engine] yt-dlp stderr:', stderr.slice(0, 300));
+  for (const clients of playerClients) {
+    try {
+      const bin = await ensureFreshYtDlp();
+      const format = audioOnly ? 'bestaudio/b/best' : 'bestvideo+bestaudio/b/best';
+      const args = [
+        '--get-url',
+        '-f', format,
+        '--no-playlist',
+        '--no-warnings',
+        '--quiet',
+        '--extractor-args', `youtube:player_client=${clients}`,
+        '--add-header', 'User-Agent:Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36',
+        cleanUrl,
+      ];
 
-    const url = stdout.trim().split('\n')[0].trim();
-    if (url.startsWith('http')) {
-      cdnUrlCache.set(cacheKey, { url, expiresAt: Date.now() + 4 * 60 * 1000 });
-      console.log('[NovaFetch Engine] Resolved CDN URL:', url.slice(0, 80));
-      return url;
+      const { stdout, stderr } = await execFileAsync(bin, args, { timeout: 30000 });
+      if (stderr?.trim()) console.warn(`[NovaFetch Engine] yt-dlp stderr (${clients}):`, stderr.slice(0, 300));
+
+      const url = stdout.trim().split('\n')[0].trim();
+      if (url.startsWith('http')) {
+        cdnUrlCache.set(cacheKey, { url, expiresAt: Date.now() + 4 * 60 * 1000 });
+        console.log(`[NovaFetch Engine] Resolved CDN URL via ${clients}:`, url.slice(0, 80));
+        return url;
+      }
+      console.warn(`[NovaFetch Engine] yt-dlp (${clients}) returned no valid URL:`, stdout.slice(0, 200));
+    } catch (err: any) {
+      console.error(`[NovaFetch Engine] yt-dlp (${clients}) error:`, err?.message || err);
     }
-    console.error('[NovaFetch Engine] yt-dlp returned no valid URL:', stdout.slice(0, 200));
-  } catch (err: any) {
-    console.error('[NovaFetch Engine] yt-dlp execution error:', err?.message || err);
   }
 
   // ── play-dl fallback ──
