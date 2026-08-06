@@ -56,7 +56,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const { title = 'NovaFetch_Media', duration = '210' } = (req.query as { title?: string; duration?: string }) || {};
+  const { url, extension = 'mp3', title = 'NovaFetch_Media', duration = '210' } = (req.query as { url?: string; extension?: string; title?: string; duration?: string }) || {};
+
+  if (url && typeof url === 'string') {
+    const renderDownloadUrl = `https://novafetch-c3jm.onrender.com/api/download?url=${encodeURIComponent(url)}&extension=${encodeURIComponent(extension)}&title=${encodeURIComponent(title)}`;
+    return res.redirect(302, renderDownloadUrl);
+  }
+
   const safeTitle = decodeURIComponent(title);
   const parsedDuration = parseInt(duration || '210', 10) || 210;
 

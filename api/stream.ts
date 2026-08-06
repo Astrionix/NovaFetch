@@ -107,7 +107,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.redirect(302, audioUrl);
   } catch (err) {
     const msg = (err as Error).message;
-    console.error('[stream] Error:', msg);
-    return res.status(502).json({ error: 'Could not extract audio stream', detail: msg });
+    console.warn('[stream] Local yt-dlp error, delegating to Render engine:', msg);
+    // Render web service has Python 3 & yt-dlp fully installed and operational
+    const renderStreamUrl = `https://novafetch-c3jm.onrender.com/api/stream?url=${encodeURIComponent(youtubeUrl)}`;
+    return res.redirect(302, renderStreamUrl);
   }
 }
