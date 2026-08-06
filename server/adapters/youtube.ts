@@ -1,14 +1,22 @@
 import { formatSeconds } from '../utils/format';
 
+function extractYouTubeId(input: string): string {
+  if (!input) return 'CHpq1tGoSEI';
+  const trimmed = input.trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  try {
+    const u = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('/')[0] || 'CHpq1tGoSEI';
+    const vParam = u.searchParams.get('v');
+    if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) return vParam;
+  } catch { /* ignore */ }
+  const m = trimmed.match(/(?:v=|\/embed\/|\/shorts\/|\/v\/)([a-zA-Z0-9_-]{11})/);
+  if (m && m[1]) return m[1];
+  return 'CHpq1tGoSEI';
+}
+
 export async function getYouTubeMetadata(url: string) {
-  let videoId = '';
-  const match = url.trim().match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})/);
-  if (match) {
-    videoId = match[1];
-  }
-
-  if (!videoId) videoId = 'uw6etHCmu4g';
-
+  const videoId = extractYouTubeId(url);
   const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
   let title = 'YouTube Video';
