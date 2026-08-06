@@ -6,11 +6,13 @@
   "functions": {
     "api/stream.ts": {
       "memory": 1024,
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "bin/**"
     },
     "api/download.ts": {
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "bin/**"
     },
     "api/analyze.ts": {
       "memory": 512,
