@@ -57,36 +57,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const videoId = extractYouTubeId(String(rawUrl || ''));
     const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // 1. Primary: Delegate to Render Fastify Engine with 8s timeout
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: fullUrl }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (renderRes.ok) {
-        const renderData = await renderRes.json();
-        if (renderData && renderData.title) {
-          return res.status(200).json(renderData);
-        }
-      }
-    } catch {
-      // fallback to local extraction if Render fails or times out
-    }
-
     let title = 'High Definition Media Stream';
-    let author = 'YouTube Verified Stream';
-    let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    let author = 'YouTube Creator';
+    let thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
     let durationSec = 240;
 
-    let debugLog: any = {};
-    // 1. YouTube InnerTube Player API (Sub-80ms exact duration & metadata via WEB_REMIX YouTube Music client)
-    try {
-      const itRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+    // Parallel sub-200ms fetch: YouTube oEmbed + InnerTube WEB_REMIX API
+    const [oembedRes, itData] = await Promise.all([
+      fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('https://www.youtube.com/youtubei/v1/player', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,64 +76,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           videoId,
           context: { client: { clientName: 'WEB_REMIX', clientVersion: '1.20240101.00.00' } }
         })
-      });
-      debugLog.itStatus = itRes.status;
-      if (itRes.ok) {
-        const itData = await itRes.json();
-        const vd = itData?.videoDetails;
-        const mf = itData?.microformat?.playerMicroformatRenderer;
-        debugLog.hasVd = !!vd;
-        debugLog.vdLength = vd?.lengthSeconds;
-        debugLog.mfLength = mf?.lengthSeconds;
-        debugLog.playability = itData?.playabilityStatus?.status;
-        if (vd) {
-          if (vd.title) title = vd.title;
-          if (vd.author) author = vd.author;
-          const secStr = vd.lengthSeconds || mf?.lengthSeconds;
-          if (secStr) {
-            const parsedSec = parseInt(secStr, 10);
-            if (parsedSec > 0) durationSec = parsedSec;
-          }
-          const thumbs = vd.thumbnail?.thumbnails;
-          if (Array.isArray(thumbs) && thumbs.length > 0) {
-            thumbnail = thumbs[thumbs.length - 1].url || thumbnail;
-          }
-        }
-      }
-    } catch (e: any) {
-      debugLog.itErr = e?.message || String(e);
+      }).then(r => r.ok ? r.json() : null).catch(() => null)
+    ]);
+
+    if (oembedRes) {
+      if (oembedRes.title) title = oembedRes.title;
+      if (oembedRes.author_name) author = oembedRes.author_name;
+      if (oembedRes.thumbnail_url) thumbnail = oembedRes.thumbnail_url;
     }
 
-    // 2. YouTube oEmbed
-    try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`);
-      debugLog.oembedStatus = oembedRes.status;
-      if (oembedRes.ok) {
-        const oembedData = await oembedRes.json();
-        if (oembedData.title && title === 'High Definition Media Stream') title = oembedData.title;
-        if (oembedData.author_name && author === 'YouTube Verified Stream') author = oembedData.author_name;
-        if (oembedData.thumbnail_url && !thumbnail.includes('maxresdefault')) thumbnail = oembedData.thumbnail_url;
+    if (itData?.videoDetails) {
+      const vd = itData.videoDetails;
+      if (vd.title && title === 'High Definition Media Stream') title = vd.title;
+      if (vd.author && author === 'YouTube Creator') author = vd.author;
+      if (vd.lengthSeconds) {
+        const sec = parseInt(vd.lengthSeconds, 10);
+        if (sec > 0) durationSec = sec;
       }
-    } catch (e: any) {
-      debugLog.oembedErr = e?.message;
-    }
-
-    // 4. Delegate to Render Backend Engine if Vercel cloud IP encountered YouTube datacenter restriction
-    if (durationSec === 240) {
-      try {
-        const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: fullUrl })
-        });
-        if (renderRes.ok) {
-          const renderData = await renderRes.json();
-          if (renderData && renderData.duration && renderData.duration !== 240) {
-            return res.status(200).json(renderData);
-          }
-        }
-      } catch (e: any) {
-        debugLog.renderErr = e?.message;
+      if (vd.thumbnail?.thumbnails?.length) {
+        const thumbs = vd.thumbnail.thumbnails;
+        thumbnail = thumbs[thumbs.length - 1].url || thumbnail;
       }
     }
 
@@ -179,19 +120,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       description: `Analyzed stream from YouTube.`,
       tags: ['YouTube', 'Transcoded', 'HQ Stream'],
       samplePlaybackUrl: `/api/stream?url=${encodeURIComponent(fullUrl)}&extension=mp3`,
-      debugLog,
       formats
     });
   } catch (err: any) {
     const rawUrl = req.query?.url ? (Array.isArray(req.query.url) ? req.query.url[0] : req.query.url) : '';
-    const match = String(rawUrl).match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})/);
-    const fallbackId = match ? match[1] : 'CHpq1tGoSEI';
+    const fallbackId = extractYouTubeId(String(rawUrl || ''));
     const fallbackUrl = `https://www.youtube.com/watch?v=${fallbackId}`;
     return res.status(200).json({
       id: fallbackId,
       url: fallbackUrl,
-      catchError: err?.message || String(err),
-      catchStack: String(err?.stack || ''),
       title: 'YouTube Media Stream',
       author: 'YouTube Verified Creator',
       avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
