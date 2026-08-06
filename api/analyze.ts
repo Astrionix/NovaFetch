@@ -113,26 +113,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Secondary fallback: Fast delegation to Render engine if local InnerTube duration was unresolved
+    // Fallback: Googlebot YouTube HTML page fetch (Sub-150ms exact lengthSeconds)
     if (durationSec === 240) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
-        const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: fullUrl }),
-          signal: controller.signal
+        const pageRes = await fetch(fullUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
         });
-        clearTimeout(timeoutId);
-        if (renderRes.ok) {
-          const renderData = await renderRes.json();
-          if (renderData && renderData.duration && renderData.duration !== 240) {
-            return res.status(200).json(renderData);
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+          const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
+          if (lengthMatch && lengthMatch[1]) {
+            const parsedSec = parseInt(lengthMatch[1], 10);
+            if (parsedSec > 0) durationSec = parsedSec;
+          } else if (approxMatch && approxMatch[1]) {
+            const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
+            if (parsedSec > 0) durationSec = parsedSec;
           }
         }
       } catch {
-        // use local durationSec fallback
+        // fallback
       }
     }
 
