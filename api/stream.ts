@@ -13,6 +13,11 @@ function extractVideoId(input: string): string | null {
 }
 
 // ── Vercel handler ────────────────────────────────────────────────────────────
+//
+// Strategy: 302-redirect the browser to Render's /api/stream endpoint.
+// Render proxies the audio bytes itself (server → Render → browser).
+// This avoids Vercel's 30s streaming timeout AND lets Render's Fastify CORS
+// headers reach the browser, solving the cross-origin block.
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -33,7 +38,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? `https://www.youtube.com/watch?v=${videoId}`
     : rawUrl;
 
-  console.log('[stream] Delegating stream to Render engine for:', videoId ?? rawUrl);
+  // Redirect to Render's /api/stream — Render proxies the bytes with full CORS headers.
+  // The browser audio element will stream directly from Render (not from Google CDN).
   const renderStreamUrl = `https://novafetch-c3jm.onrender.com/api/stream?url=${encodeURIComponent(youtubeUrl)}&extension=${encodeURIComponent(extension)}`;
+  console.log('[stream] Redirecting to Render proxy stream for:', videoId ?? rawUrl);
   return res.redirect(302, renderStreamUrl);
 }
