@@ -60,42 +60,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     let durationSec = 240;
 
-    // 1. YouTube oEmbed
+    // 1. YouTube InnerTube Player API (Sub-80ms exact duration & metadata)
     try {
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`);
-      if (oembedRes.ok) {
-        const oembedData = await oembedRes.json();
-        if (oembedData.title) title = oembedData.title;
-        if (oembedData.author_name) author = oembedData.author_name;
-        if (oembedData.thumbnail_url) thumbnail = oembedData.thumbnail_url;
+      const itRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId,
+          context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00' } }
+        })
+      });
+      if (itRes.ok) {
+        const itData = await itRes.json();
+        const vd = itData?.videoDetails;
+        if (vd) {
+          if (vd.title) title = vd.title;
+          if (vd.author) author = vd.author;
+          if (vd.lengthSeconds) {
+            const parsedSec = parseInt(vd.lengthSeconds, 10);
+            if (parsedSec > 0) durationSec = parsedSec;
+          }
+          if (vd.thumbnail?.thumbnails?.length) {
+            thumbnail = vd.thumbnail.thumbnails[vd.thumbnail.thumbnails.length - 1].url;
+          }
+        }
       }
     } catch {
       // fallback
     }
 
-    // 2. YouTube HTML lengthSeconds
+    // 2. YouTube oEmbed
     try {
-      const pageRes = await fetch(fullUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cookie': 'SOCS=CAI; CONSENT=YES+1'
-        }
-      });
-      if (pageRes.ok) {
-        const html = await pageRes.text();
-        const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
-        const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
-        if (lengthMatch && lengthMatch[1]) {
-          const parsedSec = parseInt(lengthMatch[1], 10);
-          if (parsedSec > 0) durationSec = parsedSec;
-        } else if (approxMatch && approxMatch[1]) {
-          const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
-          if (parsedSec > 0) durationSec = parsedSec;
-        }
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`);
+      if (oembedRes.ok) {
+        const oembedData = await oembedRes.json();
+        if (oembedData.title && title === 'High Definition Media Stream') title = oembedData.title;
+        if (oembedData.author_name && author === 'YouTube Verified Stream') author = oembedData.author_name;
+        if (oembedData.thumbnail_url && !thumbnail.includes('maxresdefault')) thumbnail = oembedData.thumbnail_url;
       }
     } catch {
       // fallback
+    }
+
+    // 3. YouTube HTML lengthSeconds fallback
+    if (durationSec === 240) {
+      try {
+        const pageRes = await fetch(fullUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cookie': 'SOCS=CAI; CONSENT=YES+1'
+          }
+        });
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+          const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
+          if (lengthMatch && lengthMatch[1]) {
+            const parsedSec = parseInt(lengthMatch[1], 10);
+            if (parsedSec > 0) durationSec = parsedSec;
+          } else if (approxMatch && approxMatch[1]) {
+            const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
+            if (parsedSec > 0) durationSec = parsedSec;
+          }
+        }
+      } catch {
+        // fallback
+      }
     }
 
     const formats = [

@@ -16,43 +16,74 @@ export async function getYouTubeMetadata(url: string) {
   let thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
   let durationSec = 240;
 
-  // 1. Fast oEmbed metadata fetch (Sub-100ms)
+  // 1. YouTube InnerTube Player API (Sub-80ms exact duration & metadata)
+  try {
+    const itRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoId,
+        context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00' } }
+      })
+    });
+    if (itRes.ok) {
+      const itData = await itRes.json();
+      const vd = itData?.videoDetails;
+      if (vd) {
+        if (vd.title) title = vd.title;
+        if (vd.author) author = vd.author;
+        if (vd.lengthSeconds) {
+          const parsedSec = parseInt(vd.lengthSeconds, 10);
+          if (parsedSec > 0) durationSec = parsedSec;
+        }
+        if (vd.thumbnail?.thumbnails?.length) {
+          thumbnail = vd.thumbnail.thumbnails[vd.thumbnail.thumbnails.length - 1].url;
+        }
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  // 2. Fast oEmbed metadata fetch fallback
   try {
     const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`);
     if (oembedRes.ok) {
       const oembedData = await oembedRes.json();
-      title = oembedData.title || title;
-      author = oembedData.author_name || author;
-      thumbnail = oembedData.thumbnail_url || thumbnail;
+      if (oembedData.title && title === 'YouTube Video') title = oembedData.title;
+      if (oembedData.author_name && author === 'YouTube Creator') author = oembedData.author_name;
+      if (oembedData.thumbnail_url && !thumbnail.includes('maxresdefault')) thumbnail = oembedData.thumbnail_url;
     }
   } catch {
     // oembed fallback
   }
 
-  // 2. Fetch exact lengthSeconds & high-res thumbnail from YouTube HTML (~120ms)
-  try {
-    const pageRes = await fetch(fullUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cookie': 'SOCS=CAI; CONSENT=YES+1'
-      }
-    });
+  // 3. Fetch lengthSeconds from YouTube HTML fallback
+  if (durationSec === 240) {
+    try {
+      const pageRes = await fetch(fullUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cookie': 'SOCS=CAI; CONSENT=YES+1'
+        }
+      });
 
-    if (pageRes.ok) {
-      const html = await pageRes.text();
-      const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
-      const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
-      if (lengthMatch && lengthMatch[1]) {
-        const parsedSec = parseInt(lengthMatch[1], 10);
-        if (parsedSec > 0) durationSec = parsedSec;
-      } else if (approxMatch && approxMatch[1]) {
-        const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
-        if (parsedSec > 0) durationSec = parsedSec;
+      if (pageRes.ok) {
+        const html = await pageRes.text();
+        const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+        const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
+        if (lengthMatch && lengthMatch[1]) {
+          const parsedSec = parseInt(lengthMatch[1], 10);
+          if (parsedSec > 0) durationSec = parsedSec;
+        } else if (approxMatch && approxMatch[1]) {
+          const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
+          if (parsedSec > 0) durationSec = parsedSec;
+        }
       }
+    } catch {
+      // duration fallback
     }
-  } catch {
-    // duration fallback
   }
 
   const formats = [
