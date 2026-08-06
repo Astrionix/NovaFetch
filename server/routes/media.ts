@@ -42,6 +42,18 @@ async function proxyCdnUrl(
 }
 
 export async function mediaRoutes(fastify: FastifyInstance) {
+  // GET /api/progress — SSE endpoint for progress tracking
+  fastify.get('/api/progress', (request, reply) => {
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.setHeader('Access-Control-Allow-Origin', '*');
+    reply.raw.write('data: {"progress":100,"status":"complete"}\n\n');
+    request.raw.on('close', () => {
+      reply.raw.end();
+    });
+  });
+
   // POST /api/analyze — also pre-warms the CDN URL cache in background
   fastify.post('/api/analyze', async (request, reply) => {
     const { url } = (request.body as { url?: string }) || {};
