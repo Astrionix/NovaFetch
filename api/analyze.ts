@@ -118,33 +118,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       debugLog.oembedErr = e?.message;
     }
 
-    // 3. YouTube HTML lengthSeconds fallback
+    // 4. Delegate to Render Backend Engine if Vercel cloud IP encountered YouTube datacenter restriction
     if (durationSec === 240) {
       try {
-        const pageRes = await fetch(fullUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cookie': 'SOCS=CAI; CONSENT=YES+1'
-          }
+        const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: fullUrl })
         });
-        debugLog.pageStatus = pageRes.status;
-        if (pageRes.ok) {
-          const html = await pageRes.text();
-          const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
-          const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
-          debugLog.htmlLength = lengthMatch?.[1];
-          debugLog.htmlApprox = approxMatch?.[1];
-          if (lengthMatch && lengthMatch[1]) {
-            const parsedSec = parseInt(lengthMatch[1], 10);
-            if (parsedSec > 0) durationSec = parsedSec;
-          } else if (approxMatch && approxMatch[1]) {
-            const parsedSec = Math.round(parseInt(approxMatch[1], 10) / 1000);
-            if (parsedSec > 0) durationSec = parsedSec;
+        if (renderRes.ok) {
+          const renderData = await renderRes.json();
+          if (renderData && renderData.duration && renderData.duration !== 240) {
+            return res.status(200).json(renderData);
           }
         }
       } catch (e: any) {
-        debugLog.pageErr = e?.message;
+        debugLog.renderErr = e?.message;
       }
     }
 
