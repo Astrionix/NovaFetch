@@ -1,11 +1,13 @@
-import { execFile } from 'child_process';
+import { execFile, exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { sanitizeFilename } from '../utils/format';
+import { getPlayDlStreamUrl } from './playdl';
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 // In-memory cache for resolved CDN URLs (keyed by YouTube URL + type)
 const cdnUrlCache = new Map<string, { url: string; expiresAt: number }>();
@@ -18,9 +20,19 @@ export interface ProcessMediaOptions {
 }
 
 /**
- * Gets the direct CDN stream URL via yt-dlp binary.
+ * Gets or downloads the latest yt-dlp binary.
+ * On Linux (Render), downloads from GitHub if missing or older than 6 hours.
  */
-function getYtDlpBin(): string {
+const TMP_YTDLP = '/tmp/yt-dlp-novafetch';
+const MAX_BIN_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function isBinFresh(filePath: string): boolean {
+  try {
+    return (Date.now() - fs.statSync(filePath).mtimeMs) < MAX_BIN_AGE_MS;
+  } catch { return false; }
+}
+
+async function ensureFreshYtDlp(): Promise<string> {
   const cwd = process.cwd();
 
   if (process.platform === 'win32') {
@@ -31,18 +43,36 @@ function getYtDlpBin(): string {
     return candidates.find(p => fs.existsSync(p)) || 'yt-dlp';
   }
 
-  // Linux (Render / other) — prioritise the standalone binary downloaded at build time
-  const candidates = [
-    '/usr/local/bin/yt-dlp',                               // pip3 install on Render (system-wide)
-    `${process.env.HOME || '/root'}/.local/bin/yt-dlp`,    // pip3 install --user
-    path.join(cwd, 'bin', 'yt-dlp'),                       // render.yaml curl fallback
+  // Linux (Render / other) — always try to get latest from GitHub first
+  if (!fs.existsSync(TMP_YTDLP) || !isBinFresh(TMP_YTDLP)) {
+    console.log('[NovaFetch] Downloading latest yt-dlp from GitHub...');
+    try {
+      await execAsync(
+        `curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${TMP_YTDLP} && chmod +x ${TMP_YTDLP}`,
+        { timeout: 25000 }
+      );
+      console.log('[NovaFetch] Latest yt-dlp downloaded to', TMP_YTDLP);
+      return TMP_YTDLP;
+    } catch (e: any) {
+      console.warn('[NovaFetch] GitHub download failed:', e.message);
+    }
+  } else {
+    console.log('[NovaFetch] Using cached fresh yt-dlp at', TMP_YTDLP);
+    return TMP_YTDLP;
+  }
+
+  // Fallback: system-installed or bundled binary
+  const fallbacks = [
+    '/usr/local/bin/yt-dlp',
+    `${process.env.HOME || '/root'}/.local/bin/yt-dlp`,
+    path.join(cwd, 'bin', 'yt-dlp'),
     path.join(cwd, 'bin', 'yt-dlp_linux'),
     path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
     '/usr/bin/yt-dlp',
   ];
-  const found = candidates.find(p => fs.existsSync(p));
+  const found = fallbacks.find(p => fs.existsSync(p));
   if (found) {
-    console.log('[NovaFetch] Using yt-dlp binary:', found);
+    console.log('[NovaFetch] Fallback yt-dlp binary:', found);
     return found;
   }
   return 'yt-dlp';
@@ -58,7 +88,7 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
 
   // Use standalone yt-dlp binary directly (no Python dependency)
   try {
-    const bin = getYtDlpBin();
+    const bin = await ensureFreshYtDlp();
     const format = audioOnly ? 'ba/b' : 'b/best[ext=mp4]/best';
     const args = [
       '--get-url',
@@ -69,7 +99,6 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
       youtubeUrl,
     ];
 
-    console.log('[NovaFetch Engine] Calling yt-dlp:', bin, args.join(' '));
     const { stdout, stderr } = await execFileAsync(bin, args, { timeout: 30000 });
     if (stderr?.trim()) console.warn('[NovaFetch Engine] yt-dlp stderr:', stderr.slice(0, 300));
 
@@ -80,11 +109,20 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
       return url;
     }
     console.error('[NovaFetch Engine] yt-dlp returned no valid URL:', stdout.slice(0, 200));
-    return null;
   } catch (err: any) {
     console.error('[NovaFetch Engine] yt-dlp execution error:', err?.message || err);
-    return null;
   }
+
+  // ── play-dl fallback (pure Node.js — works on Vercel & Render without Python) ──
+  console.log('[NovaFetch Engine] Trying play-dl fallback for', youtubeUrl.slice(-20));
+  const playDlUrl = await getPlayDlStreamUrl(youtubeUrl, audioOnly);
+  if (playDlUrl) {
+    cdnUrlCache.set(cacheKey, { url: playDlUrl, expiresAt: Date.now() + 4 * 60 * 1000 });
+    return playDlUrl;
+  }
+
+  console.error('[NovaFetch Engine] All resolvers failed for', youtubeUrl.slice(-20));
+  return null;
 }
 
 /**

@@ -28,42 +28,42 @@ fastify.get('/api/health', async () => {
 // Debug endpoint for diagnostic environment inspection
 fastify.get('/api/debug', async () => {
   const { exec } = await import('child_process');
+  const { existsSync } = await import('fs');
   const { promisify } = await import('util');
+  const path = await import('path');
   const execAsync = promisify(exec);
   const { getDirectStreamUrl } = await import('./services/processor');
 
   let pythonInfo = 'N/A';
   let ytdlpInfo = 'N/A';
+  let pip3Install = 'N/A';
+  let whichYtDlp = 'N/A';
   let testStreamResult = 'N/A';
 
-  try {
-    const { stdout } = await execAsync('python3 --version');
-    pythonInfo = stdout.trim();
-  } catch (e: any) {
-    pythonInfo = 'ERR: ' + e.message;
-  }
+  try { const { stdout } = await execAsync('python3 --version'); pythonInfo = stdout.trim(); } catch (e: any) { pythonInfo = 'ERR: ' + e.message; }
+  try { const { stdout } = await execAsync('which yt-dlp 2>/dev/null || echo NOT_FOUND'); whichYtDlp = stdout.trim(); } catch (e: any) { whichYtDlp = 'ERR: ' + e.message; }
+  try { const { stdout } = await execAsync('yt-dlp --version 2>&1'); ytdlpInfo = stdout.trim(); } catch (e: any) { ytdlpInfo = 'ERR: ' + e.message; }
+  try { const { stdout } = await execAsync('pip3 install -U yt-dlp 2>&1 | tail -3'); pip3Install = stdout.trim(); } catch (e: any) { pip3Install = 'ERR: ' + e.message; }
 
-  try {
-    const { stdout } = await execAsync('yt-dlp --version');
-    ytdlpInfo = stdout.trim();
-  } catch (e: any) {
-    ytdlpInfo = 'ERR: ' + e.message;
-  }
+  const cwd = process.cwd();
+  const home = process.env.HOME || '/root';
+  const candidates = [
+    '/usr/local/bin/yt-dlp',
+    `${home}/.local/bin/yt-dlp`,
+    path.join(cwd, 'bin', 'yt-dlp'),
+    path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+  ];
+  const binStatus: Record<string, boolean> = {};
+  for (const c of candidates) binStatus[c] = existsSync(c);
 
   try {
     const url = await getDirectStreamUrl('https://www.youtube.com/watch?v=CHpq1tGoSEI', true);
-    testStreamResult = url || 'NULL (failed)';
+    testStreamResult = url ? url.slice(0, 80) + '...' : 'NULL (failed)';
   } catch (e: any) {
     testStreamResult = 'ERR: ' + e.message;
   }
 
-  return {
-    platform: process.platform,
-    pythonInfo,
-    ytdlpInfo,
-    testStreamResult,
-    timestamp: new Date().toISOString()
-  };
+  return { platform: process.platform, cwd, home, pythonInfo, whichYtDlp, pip3Install, ytdlpInfo, binStatus, testStreamResult, timestamp: new Date().toISOString() };
 });
 
 // Root API route

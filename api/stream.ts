@@ -1,53 +1,74 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { execFile } from 'child_process';
+import { execFile, exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, chmodSync, copyFileSync } from 'fs';
+import { existsSync, chmodSync, copyFileSync, statSync } from 'fs';
 import path from 'path';
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
-// ── Find the yt-dlp binary ────────────────────────────────────────────────────
-// Verified paths from /api/debug endpoint:
-//   __dirname  = /var/task/api
-//   cwd        = /var/task
-//   Binary at  = /var/task/bin/yt-dlp_linux  (includeFiles: bin/**)
-//              = /var/task/node_modules/youtube-dl-exec/bin/yt-dlp  (npm postinstall)
+// ── yt-dlp binary management ─────────────────────────────────────────────────
+// The bundled yt-dlp in node_modules gets stale (YouTube changes cipher monthly).
+// We download the latest release from GitHub on each cold start if needed.
 
-function getYtDlpPath(): string {
+const TMP_YTDLP = '/tmp/yt-dlp';
+const MAX_AGE_MS = 6 * 60 * 60 * 1000; // re-download after 6 hours
+
+function isFreshEnough(filePath: string): boolean {
+  try {
+    const st = statSync(filePath);
+    return (Date.now() - st.mtimeMs) < MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureFreshYtDlp(): Promise<string> {
   // Windows local dev — use npm-installed exe
   if (process.platform === 'win32') {
     const winBin = path.join(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp.exe');
     return existsSync(winBin) ? winBin : 'yt-dlp';
   }
 
-  // Linux (Vercel) — cache in /tmp across warm invocations
-  const tmp = '/tmp/yt-dlp';
-  if (existsSync(tmp)) return tmp;
+  // Linux (Vercel) — try to download the LATEST yt-dlp from GitHub
+  if (!existsSync(TMP_YTDLP) || !isFreshEnough(TMP_YTDLP)) {
+    console.log('[stream] Downloading latest yt-dlp from GitHub...');
+    try {
+      await execAsync(
+        `curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o ${TMP_YTDLP} && chmod +x ${TMP_YTDLP}`,
+        { timeout: 20000 }
+      );
+      console.log('[stream] yt-dlp downloaded and ready');
+      return TMP_YTDLP;
+    } catch (e: any) {
+      console.warn('[stream] GitHub download failed:', e.message);
+    }
 
-  // Exact paths confirmed by /api/debug
-  const cwd = process.cwd();           // /var/task
-  const candidates = [
-    cwd + '/node_modules/youtube-dl-exec/bin/yt-dlp',  // /var/task/node_modules/...
-    cwd + '/bin/yt-dlp_linux',                          // /var/task/bin/yt-dlp_linux
-    '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
-    '/var/task/bin/yt-dlp_linux',
-  ];
-
-  const found = candidates.find(p => existsSync(p));
-  if (!found) {
-    throw new Error('yt-dlp not found. cwd=' + cwd + ' candidates: ' + candidates.join(', '));
+    // Fall back to bundled binary (might be stale but better than nothing)
+    const cwd = process.cwd();
+    const candidates = [
+      cwd + '/node_modules/youtube-dl-exec/bin/yt-dlp',
+      cwd + '/bin/yt-dlp_linux',
+      '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
+      '/var/task/bin/yt-dlp_linux',
+    ];
+    const found = candidates.find(p => existsSync(p));
+    if (found) {
+      copyFileSync(found, TMP_YTDLP);
+      chmodSync(TMP_YTDLP, '755');
+      console.log('[stream] Using bundled yt-dlp from', found);
+    } else {
+      throw new Error('yt-dlp not found anywhere');
+    }
   }
 
-  copyFileSync(found, tmp);
-  chmodSync(tmp, '755');
-  console.log('[stream] yt-dlp ready from', found);
-  return tmp;
+  return TMP_YTDLP;
 }
 
 // ── Extract audio URL via yt-dlp ──────────────────────────────────────────────
 
 async function getAudioUrl(youtubeUrl: string): Promise<string> {
-  const bin = getYtDlpPath();
+  const bin = await ensureFreshYtDlp();
 
   const { stdout, stderr } = await execFileAsync(bin, [
     '--get-url',
@@ -102,14 +123,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const audioUrl = await getAudioUrl(youtubeUrl);
-    console.log('[stream] Redirecting to real CDN URL');
-    // 302 → browser <audio> streams directly from YouTube CDN
+    console.log('[stream] Redirecting to real CDN URL (yt-dlp)');
     return res.redirect(302, audioUrl);
   } catch (err) {
     const msg = (err as Error).message;
-    console.warn('[stream] Local yt-dlp error, delegating to Render engine:', msg);
-    // Render web service has Python 3 & yt-dlp fully installed and operational
-    const renderStreamUrl = `https://novafetch-c3jm.onrender.com/api/stream?url=${encodeURIComponent(youtubeUrl)}`;
-    return res.redirect(302, renderStreamUrl);
+    console.warn('[stream] yt-dlp failed:', msg.slice(0, 200));
   }
+
+  // Final fallback — delegate to Render engine (has Python + latest yt-dlp)
+  console.warn('[stream] All local resolvers failed, delegating to Render engine');
+  const renderStreamUrl = `https://novafetch-c3jm.onrender.com/api/stream?url=${encodeURIComponent(youtubeUrl)}`;
+  return res.redirect(302, renderStreamUrl);
 }
