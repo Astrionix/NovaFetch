@@ -57,6 +57,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const videoId = extractYouTubeId(String(rawUrl || ''));
     const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
+    // 1. Primary: Delegate to Render Fastify Engine (has Python 3.11 + yt-dlp & unblocked datacenter network)
+    try {
+      const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: fullUrl })
+      });
+      if (renderRes.ok) {
+        const renderData = await renderRes.json();
+        if (renderData && renderData.title) {
+          return res.status(200).json(renderData);
+        }
+      }
+    } catch {
+      // fallback to local extraction if Render fails
+    }
+
     let title = 'High Definition Media Stream';
     let author = 'YouTube Verified Stream';
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
