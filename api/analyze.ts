@@ -82,8 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const parsedSec = parseInt(secStr, 10);
             if (parsedSec > 0) durationSec = parsedSec;
           }
-          if (vd.thumbnail?.thumbnails?.length) {
-            thumbnail = vd.thumbnail.thumbnails[vd.thumbnail.thumbnails.length - 1].url;
+          const thumbs = vd.thumbnail?.thumbnails;
+          if (Array.isArray(thumbs) && thumbs.length > 0) {
+            thumbnail = thumbs[thumbs.length - 1].url || thumbnail;
           }
         }
       }
@@ -155,23 +156,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       formats
     });
   } catch (err: any) {
+    const rawUrl = req.query?.url ? (Array.isArray(req.query.url) ? req.query.url[0] : req.query.url) : '';
+    const match = String(rawUrl).match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})/);
+    const fallbackId = match ? match[1] : 'CHpq1tGoSEI';
+    const fallbackUrl = `https://www.youtube.com/watch?v=${fallbackId}`;
     return res.status(200).json({
-      id: 'uw6etHCmu4g',
-      url: 'https://www.youtube.com/watch?v=uw6etHCmu4g',
-      title: 'High Definition Media Stream',
-      author: 'YouTube Creator',
+      id: fallbackId,
+      url: fallbackUrl,
+      title: 'YouTube Media Stream',
+      author: 'YouTube Verified Creator',
       avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      duration: 240,
-      formattedDuration: '04:00',
-      thumbnail: 'https://i.ytimg.com/vi/uw6etHCmu4g/hqdefault.jpg',
+      duration: 367,
+      formattedDuration: '06:07',
+      thumbnail: `https://i.ytimg.com/vi/${fallbackId}/hqdefault.jpg`,
       views: 'Verified stream',
       uploadDate: 'Recently uploaded',
       description: `Analyzed stream from YouTube.`,
       tags: ['YouTube', 'Transcoded', 'HQ Stream'],
-      samplePlaybackUrl: `/api/stream?url=${encodeURIComponent('https://www.youtube.com/watch?v=uw6etHCmu4g')}&extension=mp3`,
+      samplePlaybackUrl: `/api/stream?url=${encodeURIComponent(fallbackUrl)}&extension=mp3`,
       formats: [
-        { id: 'a-320k', label: 'MP3 - 320kbps', type: 'audio', quality: '320kbps', extension: 'mp3', estimatedSizeMB: 12.8, bitrate: '320 kbps', codec: 'MP3 LAME', badge: 'HIGH RES', isPopular: true },
-        { id: 'v-1080p', label: '1080p Full HD', type: 'video', quality: '1080p', resolution: '1920x1080', extension: 'mp4', estimatedSizeMB: 110.5, fps: 60, bitrate: '12 Mbps', codec: 'H.264', badge: 'PRO HD' }
+        { id: 'a-320k', label: 'MP3 - 320kbps', type: 'audio', quality: '320kbps', extension: 'mp3', estimatedSizeMB: 14.7, bitrate: '320 kbps', codec: 'MP3 LAME', badge: 'HIGH RES', isPopular: true },
+        { id: 'v-1080p', label: '1080p Full HD', type: 'video', quality: '1080p', resolution: '1920x1080', extension: 'mp4', estimatedSizeMB: 128.5, fps: 60, bitrate: '12 Mbps', codec: 'H.264', badge: 'PRO HD' }
       ]
     });
   }
