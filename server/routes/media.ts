@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { analyzeUrlMetadata } from '../services/metadata';
-import { getDirectStreamUrl, prewarmCdnUrl, createSampleWavBuffer } from '../services/processor';
+import { getDirectStreamUrl, pipeYtDlpStream, prewarmCdnUrl, createSampleWavBuffer } from '../services/processor';
 import { getGenericMetadata } from '../adapters/generic';
 import { detectPlatform } from '../services/detector';
 import { cleanupFile } from '../services/cleanup';
@@ -83,7 +83,14 @@ export async function mediaRoutes(fastify: FastifyInstance) {
   });
 
   /**
-   * GET /api/stream — instant if CDN URL was pre-warmed during /api/analyze.
+   * GET /api/stream
+   *
+   * Primary strategy: spawn yt-dlp with -o - and pipe stdout directly to the
+   * HTTP response. This keeps the entire flow on the SERVER (no IP mismatch):
+   *   browser → Render → yt-dlp → YouTube CDN → yt-dlp stdout → browser
+   *
+   * Secondary: proxy a pre-resolved CDN URL via fetch (proxyCdnUrl).
+   * Fallback: silent WAV buffer.
    */
   fastify.get('/api/stream', async (request, reply) => {
     const { url, extension = 'mp3', duration } = (request.query as { url?: string; extension?: string; duration?: string; start?: string; end?: string }) || {};
@@ -94,6 +101,24 @@ export async function mediaRoutes(fastify: FastifyInstance) {
     const isAudio = extension !== 'mp4';
     const parsedDuration = parseInt(duration || '210', 10) || 210;
 
+    // ── STRATEGY 1: yt-dlp piped directly (no IP-lock exposure) ──────────────
+    reply.raw.setHeader('Content-Type', isAudio ? 'audio/webm' : 'video/mp4');
+    reply.raw.setHeader('Accept-Ranges', 'none');
+    reply.raw.setHeader('Transfer-Encoding', 'chunked');
+    reply.raw.setHeader('Access-Control-Allow-Origin', '*');
+
+    const proc = await pipeYtDlpStream(url.trim(), isAudio, reply.raw);
+    if (proc) {
+      // Keep connection alive until yt-dlp finishes
+      await new Promise<void>((resolve) => {
+        proc.once('close', () => resolve());
+        proc.once('error', () => resolve());
+        request.raw.once('close', () => { proc.kill(); resolve(); });
+      });
+      return;
+    }
+
+    // ── STRATEGY 2: proxy pre-resolved CDN URL ────────────────────────────────
     const directUrl = await getDirectStreamUrl(url.trim(), isAudio);
     if (directUrl) {
       try {
@@ -103,7 +128,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // WAV synthesizer fallback
+    // ── FALLBACK: silent WAV buffer ───────────────────────────────────────────
     const tmpDir = os.tmpdir();
     const wavPath = path.join(tmpDir, `nf_stream_${Date.now()}.wav`);
     const wavBuffer = createSampleWavBuffer(parsedDuration, 0);

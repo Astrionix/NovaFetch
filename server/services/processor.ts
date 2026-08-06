@@ -144,6 +144,79 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
 }
 
 /**
+ * Pipes yt-dlp audio output DIRECTLY to a Node.js Writable stream.
+ *
+ * Uses `-o -` (stdout) instead of `--get-url`, which means:
+ *  - yt-dlp fetches from YouTube CDN from THE SAME SERVER IP that resolved the URL
+ *  - No IP mismatch — no redirect to the browser — no SABR/IP-lock rejection
+ *  - Works from any cloud datacenter IP (Render, Vercel, etc.)
+ *
+ * @param youtubeUrl   Full YouTube watch URL
+ * @param audioOnly    true = audio stream, false = video+audio
+ * @param writable     The Node.js Writable to pipe into (e.g. reply.raw)
+ * @returns child process (caller can listen to 'close'/'error' events)
+ */
+export async function pipeYtDlpStream(
+  youtubeUrl: string,
+  audioOnly: boolean,
+  writable: import('stream').Writable
+): Promise<import('child_process').ChildProcess | null> {
+  const { spawn } = await import('child_process');
+  const cleanUrl = cleanYouTubeUrl(youtubeUrl);
+  const bin = await ensureFreshYtDlp();
+  const format = audioOnly ? 'bestaudio/b/best' : 'bestvideo+bestaudio/b/best';
+
+  const playerClients = ['tv_embedded,web_creator', 'android,tv_embedded', 'web'];
+
+  for (const clients of playerClients) {
+    const args = [
+      '-f', format,
+      '--no-playlist',
+      '--no-warnings',
+      '--quiet',
+      '--extractor-args', `youtube:player_client=${clients}`,
+      '--add-header', 'User-Agent:Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36',
+      '-o', '-',   // <-- pipe bytes to stdout
+      cleanUrl,
+    ];
+
+    try {
+      const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+      // Collect stderr to detect failure
+      let stderrBuf = '';
+      proc.stderr?.on('data', (d: Buffer) => { stderrBuf += d.toString(); });
+
+      // Give it 5s to start outputting data — if stdout emits 'data', it's working
+      const started = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 8000);
+        proc.stdout?.once('data', () => { clearTimeout(timeout); resolve(true); });
+        proc.once('error', () => { clearTimeout(timeout); resolve(false); });
+        proc.once('close', (code) => {
+          clearTimeout(timeout);
+          if (code !== 0) resolve(false);
+        });
+      });
+
+      if (started) {
+        console.log(`[NovaFetch Engine] Piping yt-dlp stream via ${clients} for`, cleanUrl.slice(-20));
+        proc.stdout?.pipe(writable, { end: true });
+        return proc;
+      }
+
+      // Kill the failed process and try next client
+      proc.kill();
+      if (stderrBuf.trim()) console.warn(`[NovaFetch Engine] yt-dlp pipe (${clients}) failed:`, stderrBuf.slice(0, 200));
+    } catch (err: any) {
+      console.error(`[NovaFetch Engine] yt-dlp spawn (${clients}) error:`, err?.message);
+    }
+  }
+
+  console.error('[NovaFetch Engine] pipeYtDlpStream: all player clients failed for', cleanUrl.slice(-20));
+  return null;
+}
+
+/**
  * Pre-warms the CDN URL cache in the background during /api/analyze.
  * Called fire-and-forget — does not block the analyze response.
  */
