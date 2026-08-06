@@ -1,4 +1,4 @@
-import { execFile, exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
@@ -7,7 +7,6 @@ import { sanitizeFilename } from '../utils/format';
 import { getPlayDlStreamUrl } from './playdl';
 
 const execFileAsync = promisify(execFile);
-const execAsync = promisify(exec);
 
 // In-memory cache for resolved CDN URLs (keyed by YouTube URL + type)
 const cdnUrlCache = new Map<string, { url: string; expiresAt: number }>();
@@ -17,19 +16,6 @@ export interface ProcessMediaOptions {
   extension: 'mp4' | 'mp3' | 'm4a' | 'wav';
   title?: string;
   duration?: number;
-}
-
-/**
- * Gets or downloads the latest yt-dlp binary.
- * On Linux (Render), downloads from GitHub if missing or older than 6 hours.
- */
-const TMP_YTDLP = '/tmp/yt-dlp-novafetch';
-const MAX_BIN_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-function isBinFresh(filePath: string): boolean {
-  try {
-    return (Date.now() - fs.statSync(filePath).mtimeMs) < MAX_BIN_AGE_MS;
-  } catch { return false; }
 }
 
 function cleanYouTubeUrl(input: string): string {
@@ -70,25 +56,6 @@ async function ensureFreshYtDlp(): Promise<string> {
   if (found) {
     console.log('[NovaFetch] Using system yt-dlp binary:', found);
     return found;
-  }
-
-  // Download with atomic rename to avoid spawn ETXTBSY
-  const tmpDownloadPath = `${TMP_YTDLP}.tmp`;
-  if (!fs.existsSync(TMP_YTDLP) || !isBinFresh(TMP_YTDLP)) {
-    console.log('[NovaFetch] Downloading latest yt-dlp from GitHub...');
-    try {
-      await execAsync(
-        `curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ${tmpDownloadPath} && chmod +x ${tmpDownloadPath} && mv ${tmpDownloadPath} ${TMP_YTDLP}`,
-        { timeout: 25000 }
-      );
-      console.log('[NovaFetch] Latest yt-dlp downloaded to', TMP_YTDLP);
-      return TMP_YTDLP;
-    } catch (e: any) {
-      console.warn('[NovaFetch] GitHub download failed:', e.message);
-    }
-  } else {
-    console.log('[NovaFetch] Using cached fresh yt-dlp at', TMP_YTDLP);
-    return TMP_YTDLP;
   }
 
   return 'yt-dlp';
