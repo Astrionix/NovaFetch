@@ -1,7 +1,15 @@
 import type { MediaMetadata, FormatOption } from '../types';
 import { SAMPLE_PRESETS } from './samplePresets';
 
-const API_BASE = 'http://localhost:3001/api';
+export function getApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '/api';
+  }
+  return 'http://localhost:3001/api';
+}
 
 /**
  * Ultra-fast Media Analyzer: Auto-expands 11-character video IDs and queries the Fastify API in sub-100ms
@@ -24,8 +32,8 @@ export async function analyzeMediaUrl(url: string): Promise<MediaMetadata> {
   }
 
   try {
-    // Call Node.js Fastify Backend POST /api/analyze (sub-100ms)
-    const response = await fetch(`${API_BASE}/analyze`, {
+    const apiBase = getApiBaseUrl();
+    const response = await fetch(`${apiBase}/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -37,8 +45,8 @@ export async function analyzeMediaUrl(url: string): Promise<MediaMetadata> {
       const data = await response.json();
       return data;
     }
-  } catch {
-    // Fallback to local fast analyzer if backend is offline
+  } catch (err) {
+    console.warn('[NovaFetch Engine] API analyze request failed or blocked by CORS/PNA, using client-side fallback:', err);
   }
 
   // Fast client-side fallback analyzer
@@ -114,7 +122,8 @@ export async function triggerFileDownload(fileName: string, formatExt: string, s
     try {
       const isAudio = formatExt !== 'mp4';
       const ext = isAudio ? 'webm' : 'mp4';
-      const downloadUrl = `${API_BASE}/download?url=${encodeURIComponent(url)}&extension=${formatExt}&title=${encodeURIComponent(fileName)}`;
+      const apiBase = getApiBaseUrl();
+      const downloadUrl = `${apiBase}/download?url=${encodeURIComponent(url)}&extension=${formatExt}&title=${encodeURIComponent(fileName)}`;
 
       const a = document.createElement('a');
       a.href = downloadUrl;
@@ -150,4 +159,3 @@ export async function triggerFileDownload(fileName: string, formatExt: string, s
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
 }
-

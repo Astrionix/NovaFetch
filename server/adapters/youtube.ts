@@ -79,7 +79,7 @@ export async function getYouTubeMetadata(url: string) {
     uploadDate: 'Recently uploaded',
     description: `YouTube video analyzed in sub-150ms. Ready for high-speed conversion and MP3/MP4 download.`,
     tags: ['YouTube', 'Fast Extractor', 'HQ Stream', 'Authorized'],
-    samplePlaybackUrl: `http://localhost:3001/api/stream?url=${encodeURIComponent(fullUrl)}&extension=mp3`,
+    samplePlaybackUrl: `/api/stream?url=${encodeURIComponent(fullUrl)}&extension=mp3`,
     formats
   };
 }

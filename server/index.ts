@@ -4,10 +4,17 @@ import { mediaRoutes } from './routes/media';
 
 const fastify = Fastify({ logger: true });
 
-// Register CORS
+// Register CORS with Private Network Access (PNA) header support
 await fastify.register(cors, {
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS']
+  origin: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'Access-Control-Allow-Private-Network']
+});
+
+// Add Hook for Chrome Private Network Access (PNA) preflight requests
+fastify.addHook('onRequest', async (request, reply) => {
+  reply.header('Access-Control-Allow-Private-Network', 'true');
 });
 
 // Register Media API Routes

@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/analyze",
+      "destination": "/api/analyze.ts"
+    },
+    {
+      "source": "/api/stream",
+      "destination": "/api/stream.ts"
+    },
+    {
+      "source": "/api/download",
+      "destination": "/api/download.ts"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

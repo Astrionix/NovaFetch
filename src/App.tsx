@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { MediaMetadata, FormatOption } from './types';
-import { analyzeMediaUrl, triggerFileDownload } from './lib/mediaEngine';
+import { analyzeMediaUrl, triggerFileDownload, getApiBaseUrl } from './lib/mediaEngine';
 import './index.css';
 
 // ── CINEMA PARTICLE BACKGROUND ────────────────────────────────────────────────
@@ -109,7 +109,7 @@ export function App() {
 
   // Stream URL for the preview player
   const previewUrl = metadata
-    ? `http://localhost:3001/api/stream?url=${encodeURIComponent(metadata.url)}&extension=${selectedFormat?.type === 'video' ? 'mp4' : 'mp3'}&duration=${metadata.duration}`
+    ? `${getApiBaseUrl()}/stream?url=${encodeURIComponent(metadata.url)}&extension=${selectedFormat?.type === 'video' ? 'mp4' : 'mp3'}&duration=${metadata.duration}`
     : '';
 
   // ── Analyze ────────────────────────────────────────────────────────────────
