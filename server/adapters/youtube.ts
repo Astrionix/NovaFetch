@@ -78,7 +78,7 @@ export async function getYouTubeMetadata(url: string) {
       const pageRes = await fetch(fullUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-          'Accept-Language': 'en-US,en;q=0.9'
+          'Accept-Language': 'en-US,en;q=0.9',
           'Cookie': 'SOCS=CAI; CONSENT=YES+1'
         }
       });
