@@ -75,11 +75,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
 
     const directUrl = await getDirectStreamUrl(url.trim(), isAudio);
     if (directUrl) {
-      try {
-        return await proxyCdnUrl(directUrl, request.headers.range, reply);
-      } catch (err) {
-        fastify.log.warn('CDN proxy failed, using WAV fallback');
-      }
+      return reply.redirect(directUrl, 302);
     }
 
     // WAV synthesizer fallback
