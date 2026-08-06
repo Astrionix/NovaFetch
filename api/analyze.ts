@@ -62,6 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     let durationSec = 240;
 
+    let debugLog: any = {};
     // 1. YouTube InnerTube Player API (Sub-80ms exact duration & metadata via MWEB client)
     try {
       const itRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
@@ -76,10 +77,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           context: { client: { clientName: 'MWEB', clientVersion: '2.20240101.00.00' } }
         })
       });
+      debugLog.itStatus = itRes.status;
       if (itRes.ok) {
         const itData = await itRes.json();
         const vd = itData?.videoDetails;
         const mf = itData?.microformat?.playerMicroformatRenderer;
+        debugLog.hasVd = !!vd;
+        debugLog.vdLength = vd?.lengthSeconds;
+        debugLog.mfLength = mf?.lengthSeconds;
+        debugLog.playability = itData?.playabilityStatus?.status;
         if (vd) {
           if (vd.title) title = vd.title;
           if (vd.author) author = vd.author;
@@ -94,21 +100,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
       }
-    } catch {
-      // fallback
+    } catch (e: any) {
+      debugLog.itErr = e?.message || String(e);
     }
 
     // 2. YouTube oEmbed
     try {
       const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(fullUrl)}&format=json`);
+      debugLog.oembedStatus = oembedRes.status;
       if (oembedRes.ok) {
         const oembedData = await oembedRes.json();
         if (oembedData.title && title === 'High Definition Media Stream') title = oembedData.title;
         if (oembedData.author_name && author === 'YouTube Verified Stream') author = oembedData.author_name;
         if (oembedData.thumbnail_url && !thumbnail.includes('maxresdefault')) thumbnail = oembedData.thumbnail_url;
       }
-    } catch {
-      // fallback
+    } catch (e: any) {
+      debugLog.oembedErr = e?.message;
     }
 
     // 3. YouTube HTML lengthSeconds fallback
@@ -121,10 +128,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             'Cookie': 'SOCS=CAI; CONSENT=YES+1'
           }
         });
+        debugLog.pageStatus = pageRes.status;
         if (pageRes.ok) {
           const html = await pageRes.text();
           const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
           const approxMatch = html.match(/"approxDurationMs":"(\d+)"/);
+          debugLog.htmlLength = lengthMatch?.[1];
+          debugLog.htmlApprox = approxMatch?.[1];
           if (lengthMatch && lengthMatch[1]) {
             const parsedSec = parseInt(lengthMatch[1], 10);
             if (parsedSec > 0) durationSec = parsedSec;
@@ -133,8 +143,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (parsedSec > 0) durationSec = parsedSec;
           }
         }
-      } catch {
-        // fallback
+      } catch (e: any) {
+        debugLog.pageErr = e?.message;
       }
     }
 
@@ -159,6 +169,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       description: `Analyzed stream from YouTube.`,
       tags: ['YouTube', 'Transcoded', 'HQ Stream'],
       samplePlaybackUrl: `/api/stream?url=${encodeURIComponent(fullUrl)}&extension=mp3`,
+      debugLog,
       formats
     });
   } catch (err: any) {
