@@ -29,6 +29,8 @@ function getYtDlpBin(): string {
     if (fs.existsSync(localBin)) return `"${localBin}"`;
     return 'yt-dlp';
   }
+  const npmLinuxBin = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
+  if (fs.existsSync(npmLinuxBin)) return `"${npmLinuxBin}"`;
   const localBin = path.join(process.cwd(), 'bin', 'yt-dlp');
   if (fs.existsSync(localBin)) return `"${localBin}"`;
   const localLinuxBin = path.join(process.cwd(), 'bin', 'yt-dlp_linux');
