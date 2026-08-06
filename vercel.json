@@ -3,6 +3,20 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/stream.ts": {
+      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/download.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/analyze.ts": {
+      "memory": 512,
+      "maxDuration": 15
+    }
+  },
   "rewrites": [
     {
       "source": "/api/analyze",

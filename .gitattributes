@@ -1,0 +1,6 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Binary files - no line ending conversion
+bin/yt-dlp_linux binary
+*.js.map binary
