@@ -29,11 +29,13 @@ export async function getYouTubeMetadata(url: string) {
     if (itRes.ok) {
       const itData = await itRes.json();
       const vd = itData?.videoDetails;
+      const mf = itData?.microformat?.playerMicroformatRenderer;
       if (vd) {
         if (vd.title) title = vd.title;
         if (vd.author) author = vd.author;
-        if (vd.lengthSeconds) {
-          const parsedSec = parseInt(vd.lengthSeconds, 10);
+        const secStr = vd.lengthSeconds || mf?.lengthSeconds;
+        if (secStr) {
+          const parsedSec = parseInt(secStr, 10);
           if (parsedSec > 0) durationSec = parsedSec;
         }
         if (vd.thumbnail?.thumbnails?.length) {
