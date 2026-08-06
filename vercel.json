@@ -16,7 +16,7 @@
     },
     "api/analyze.ts": {
       "memory": 512,
-      "maxDuration": 15
+      "maxDuration": 30
     }
   },
   "rewrites": [

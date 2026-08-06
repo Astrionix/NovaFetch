@@ -57,13 +57,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const videoId = extractYouTubeId(String(rawUrl || ''));
     const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // 1. Primary: Delegate to Render Fastify Engine (has Python 3.11 + yt-dlp & unblocked datacenter network)
+    // 1. Primary: Delegate to Render Fastify Engine with 8s timeout
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: fullUrl })
+        body: JSON.stringify({ url: fullUrl }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (renderRes.ok) {
         const renderData = await renderRes.json();
         if (renderData && renderData.title) {
@@ -71,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
     } catch {
-      // fallback to local extraction if Render fails
+      // fallback to local extraction if Render fails or times out
     }
 
     let title = 'High Definition Media Stream';
