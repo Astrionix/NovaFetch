@@ -28,8 +28,9 @@ fastify.get('/api/health', async () => {
 // Start Server on Port 3001
 const start = async () => {
   try {
-    await fastify.listen({ port: 3001, host: '0.0.0.0' });
-    console.log('🚀 NovaFetch Modular Media Backend running at http://localhost:3001');
+    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+    await fastify.listen({ port, host: '0.0.0.0' });
+    console.log(`🚀 NovaFetch Modular Media Backend running at http://0.0.0.0:${port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

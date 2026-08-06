@@ -21,6 +21,14 @@ export interface ProcessMediaOptions {
  * Gets the direct CDN stream URL via yt-dlp --get-url.
  * Caches results for 4 minutes (YouTube CDN URLs expire in ~6 hours).
  */
+function getYtDlpBin(): string {
+  const localBin = path.join(process.cwd(), 'bin', 'yt-dlp');
+  if (fs.existsSync(localBin)) return `"${localBin}"`;
+  const localLinuxBin = path.join(process.cwd(), 'bin', 'yt-dlp_linux');
+  if (fs.existsSync(localLinuxBin)) return `"${localLinuxBin}"`;
+  return 'yt-dlp';
+}
+
 export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): Promise<string | null> {
   const cacheKey = `${youtubeUrl}:${audioOnly ? 'audio' : 'video'}`;
   const cached = cdnUrlCache.get(cacheKey);
@@ -30,20 +38,18 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
   }
 
   try {
-    // For audio: get best audio-only stream (webm/opus)
-    // For video: use best[ext=mp4] — a single muxed stream containing both A+V
+    const ytdlpBin = getYtDlpBin();
     const format = audioOnly ? '"bestaudio"' : '"best[ext=mp4]/best"';
-    const cmd = `yt-dlp -f ${format} --get-url --no-playlist --no-warnings "${youtubeUrl}"`;
+    const cmd = `${ytdlpBin} -f ${format} --get-url --no-playlist --no-warnings "${youtubeUrl}"`;
     const { stdout } = await execAsync(cmd, { timeout: 30000 });
-    // --get-url may return multiple lines for merged formats; take first
     const url = stdout.trim().split('\n')[0].trim();
     if (url.startsWith('http')) {
-      // Cache for 4 minutes
       cdnUrlCache.set(cacheKey, { url, expiresAt: Date.now() + 4 * 60 * 1000 });
       return url;
     }
     return null;
-  } catch {
+  } catch (err: any) {
+    console.error('[NovaFetch Engine] Stream resolution error:', err?.message || err);
     return null;
   }
 }
