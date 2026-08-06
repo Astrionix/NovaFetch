@@ -6,7 +6,7 @@ export function getApiBaseUrl(): string {
     return import.meta.env.VITE_API_BASE.replace(/\/$/, '');
   }
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return '/api';
+    return 'https://novafetch-c3jm.onrender.com/api';
   }
   return 'http://localhost:3001/api';
 }
