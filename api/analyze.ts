@@ -117,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (durationSec === 240) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
         const renderRes = await fetch('https://novafetch-c3jm.onrender.com/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
