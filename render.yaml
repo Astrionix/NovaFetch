@@ -3,8 +3,17 @@ services:
     name: novafetch-backend
     env: node
     plan: free
-    buildCommand: "npm install && pip3 install -U yt-dlp && echo 'Build complete: yt-dlp' && yt-dlp --version"
-    startCommand: "pip3 install -U yt-dlp 2>/dev/null || true; npm run server"
+    buildCommand: >
+      npm install &&
+      pip3 install -U yt-dlp --break-system-packages &&
+      echo 'yt-dlp version:' && yt-dlp --version ||
+      (curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp &&
+      chmod +x /usr/local/bin/yt-dlp &&
+      echo 'yt-dlp installed via curl:' && /usr/local/bin/yt-dlp --version)
+    startCommand: >
+      pip3 install -U yt-dlp --break-system-packages 2>/dev/null ||
+      (curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp) || true;
+      npm run server
     envVars:
       - key: NODE_ENV
         value: production

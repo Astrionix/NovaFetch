@@ -33,7 +33,11 @@ function cleanYouTubeUrl(input: string): string {
   return input.trim();
 }
 
+let _ytdlpBin: string | null = null;
+
 async function ensureFreshYtDlp(): Promise<string> {
+  if (_ytdlpBin && fs.existsSync(_ytdlpBin)) return _ytdlpBin;
+
   const cwd = process.cwd();
 
   if (process.platform === 'win32') {
@@ -41,21 +45,44 @@ async function ensureFreshYtDlp(): Promise<string> {
       path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe'),
       path.join(cwd, 'bin', 'yt-dlp.exe'),
     ];
-    return candidates.find(p => fs.existsSync(p)) || 'yt-dlp';
+    _ytdlpBin = candidates.find(p => fs.existsSync(p)) || 'yt-dlp';
+    return _ytdlpBin;
   }
 
-  // System-installed binary check first (installed by pip3 on Render)
-  const fallbacks = [
-    '/usr/local/bin/yt-dlp',
-    `${process.env.HOME || '/root'}/.local/bin/yt-dlp`,
-    '/usr/bin/yt-dlp',
-    path.join(cwd, 'bin', 'yt-dlp'),
-    path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+  // Priority: pip3-installed system binary first, then npm-bundled, then downloaded
+  const candidates = [
+    '/usr/local/bin/yt-dlp',                                              // pip3 --break-system-packages
+    `${process.env.HOME || '/root'}/.local/bin/yt-dlp`,                   // pip3 user install
+    '/usr/bin/yt-dlp',                                                    // system package manager
+    path.join(cwd, 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'), // npm bundled (exists on Render)
+    path.join(cwd, 'bin', 'yt-dlp'),                                     // manually placed
   ];
-  const found = fallbacks.find(p => fs.existsSync(p));
+
+  const found = candidates.find(p => fs.existsSync(p));
   if (found) {
-    console.log('[NovaFetch] Using system yt-dlp binary:', found);
+    console.log('[NovaFetch] Using yt-dlp binary:', found);
+    _ytdlpBin = found;
     return found;
+  }
+
+  // Last resort: download latest yt-dlp binary directly from GitHub releases
+  const downloadPath = '/usr/local/bin/yt-dlp';
+  try {
+    console.log('[NovaFetch] Downloading latest yt-dlp from GitHub releases...');
+    const { execFile: ef } = await import('child_process');
+    const { promisify: prom } = await import('util');
+    const efAsync = prom(ef);
+    await efAsync('curl', [
+      '-sL',
+      'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp',
+      '-o', downloadPath
+    ], { timeout: 30000 });
+    fs.chmodSync(downloadPath, '755');
+    console.log('[NovaFetch] yt-dlp downloaded to', downloadPath);
+    _ytdlpBin = downloadPath;
+    return downloadPath;
+  } catch (dlErr: any) {
+    console.error('[NovaFetch] curl download failed:', dlErr?.message);
   }
 
   return 'yt-dlp';
