@@ -1,11 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { existsSync, readdirSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-/**
- * Debug endpoint - lists key directories so we can find where yt-dlp lands.
- * GET /api/debug
- */
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const cwd = process.cwd();
   const dir = __dirname;
@@ -21,7 +22,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     '/var/task/node_modules/youtube-dl-exec/bin',
   ];
 
-  const result: Record<string, string[] | string> = {
+  const result: Record<string, unknown> = {
     platform: process.platform,
     cwd,
     __dirname: dir,

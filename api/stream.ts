@@ -3,32 +3,36 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, chmodSync, copyFileSync, readdirSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
+
+// __dirname is not available in ESM — derive it from import.meta.url
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ── Find the yt-dlp binary ────────────────────────────────────────────────────
 
 function getYtDlpPath(): string {
-  // On Linux (Vercel), copy to /tmp once (writable) and cache across warm invocations
   if (process.platform !== 'win32') {
     const tmp = '/tmp/yt-dlp';
     if (existsSync(tmp)) return tmp;
 
-    // Binary could be in several places depending on how Vercel bundles it
     const cwd = process.cwd();
     const dir = __dirname;
+
     const candidates = [
       path.join(cwd, 'node_modules/youtube-dl-exec/bin/yt-dlp'),
       path.join(dir, '../node_modules/youtube-dl-exec/bin/yt-dlp'),
       path.join(dir, 'node_modules/youtube-dl-exec/bin/yt-dlp'),
       '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
-      // Also the manually bundled binary
       path.join(cwd, 'bin/yt-dlp_linux'),
       path.join(dir, '../bin/yt-dlp_linux'),
       '/var/task/bin/yt-dlp_linux',
     ];
 
     const found = candidates.find(p => existsSync(p));
+
     if (found) {
       copyFileSync(found, tmp);
       chmodSync(tmp, '755');
@@ -36,33 +40,25 @@ function getYtDlpPath(): string {
       return tmp;
     }
 
-    // Debug: log what actually exists so we can fix the path
-    const dirsToCheck = [cwd, dir, '/var/task', '/var/task/node_modules/youtube-dl-exec'];
-    for (const d of dirsToCheck) {
+    // Debug: log filesystem to help diagnose
+    for (const d of [cwd, dir, '/var/task']) {
       if (existsSync(d)) {
-        try {
-          const files = readdirSync(d);
-          console.log('[stream] ls', d + ':', files.slice(0, 15).join(', '));
-        } catch { /* skip */ }
+        try { console.log('[stream] ls', d + ':', readdirSync(d).slice(0, 20).join(', ')); } catch { /* skip */ }
       }
     }
 
-    throw new Error(
-      'yt-dlp binary not found. cwd=' + cwd + ' __dirname=' + dir +
-      ' Tried: ' + candidates.join(' | ')
-    );
+    throw new Error('yt-dlp binary not found. cwd=' + cwd + ' Tried: ' + candidates.join(' | '));
   }
 
-  // Windows (local dev) — yt-dlp must be on PATH or use youtube-dl-exec's exe
+  // Windows local dev
   const winCandidates = [
     path.join(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp.exe'),
     path.join(__dirname, '../node_modules/youtube-dl-exec/bin/yt-dlp.exe'),
-    'yt-dlp',
   ];
-  return winCandidates.find(p => p === 'yt-dlp' || existsSync(p)) ?? 'yt-dlp';
+  return winCandidates.find(p => existsSync(p)) ?? 'yt-dlp';
 }
 
-// ── Extract audio stream URL via yt-dlp ───────────────────────────────────────
+// ── Extract audio URL ─────────────────────────────────────────────────────────
 
 async function getAudioUrl(youtubeUrl: string): Promise<string> {
   const bin = getYtDlpPath();
@@ -70,14 +66,8 @@ async function getAudioUrl(youtubeUrl: string): Promise<string> {
 
   const { stdout, stderr } = await execFileAsync(
     bin,
-    [
-      '--get-url',
-      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-      '--no-playlist',
-      '--no-warnings',
-      '--quiet',
-      youtubeUrl,
-    ],
+    ['--get-url', '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+     '--no-playlist', '--no-warnings', '--quiet', youtubeUrl],
     { timeout: 25000 }
   );
 
@@ -126,7 +116,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const audioUrl = await getAudioUrl(youtubeUrl);
     console.log('[stream] Redirecting to CDN');
-    // 302 → browser <audio> streams directly from YouTube CDN (no Vercel bandwidth/timeout)
     return res.redirect(302, audioUrl);
   } catch (err) {
     const msg = (err as Error).message;
