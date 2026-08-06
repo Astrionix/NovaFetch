@@ -96,13 +96,17 @@ export async function mediaRoutes(fastify: FastifyInstance) {
 
     const directUrl = await getDirectStreamUrl(url.trim(), isAudio);
     if (directUrl) {
-      return reply.redirect(directUrl, 302);
+      try {
+        return await proxyCdnUrl(directUrl, request.headers.range, reply);
+      } catch (_err) {
+        return reply.redirect(directUrl, 302);
+      }
     }
 
     // WAV synthesizer fallback
     const tmpDir = os.tmpdir();
     const wavPath = path.join(tmpDir, `nf_stream_${Date.now()}.wav`);
-    const wavBuffer = createSampleWavBuffer(parsedDuration, 440);
+    const wavBuffer = createSampleWavBuffer(parsedDuration, 0);
     fs.writeFileSync(wavPath, wavBuffer);
 
     const stat = fs.statSync(wavPath);
@@ -159,7 +163,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
     // Fallback WAV download
     const tmpDir = os.tmpdir();
     const wavPath = path.join(tmpDir, `nf_dl_${Date.now()}.wav`);
-    const wavBuffer = createSampleWavBuffer(210, 440);
+    const wavBuffer = createSampleWavBuffer(210, 0);
     fs.writeFileSync(wavPath, wavBuffer);
     reply.header('Content-Type', 'audio/wav');
     reply.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename + '.wav')}`);
@@ -191,7 +195,7 @@ export async function mediaRoutes(fastify: FastifyInstance) {
 
     const tmpDir = os.tmpdir();
     const wavPath = path.join(tmpDir, `nf_dl_${Date.now()}.wav`);
-    const wavBuffer = createSampleWavBuffer(210, 440);
+    const wavBuffer = createSampleWavBuffer(210, 0);
     fs.writeFileSync(wavPath, wavBuffer);
     reply.header('Content-Type', 'audio/wav');
     reply.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(title + '.wav')}`);
