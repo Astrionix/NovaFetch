@@ -1,4 +1,4 @@
-const CACHE_NAME = 'novafetch-shell-v1';
+const CACHE_NAME = 'novafetch-shell-v2';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -33,6 +33,11 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Skip chrome-extension:// or non-HTTP(S) requests to prevent Cache API exceptions
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
 
   // For API endpoints, try network only or return JSON error if offline
   if (url.pathname.startsWith('/api/')) {

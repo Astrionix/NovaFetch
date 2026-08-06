@@ -1,16 +1,10 @@
-import ytdl from '@distube/ytdl-core';
 import { formatSeconds } from '../utils/format';
 
 export async function getYouTubeMetadata(url: string) {
   let videoId = '';
-  try {
-    videoId = ytdl.getURLVideoID(url);
-  } catch {
-    const match = url.trim().match(/([a-zA-Z0-9_-]{11})/);
-    if (match) {
-      videoId = match[1];
-      url = `https://www.youtube.com/watch?v=${videoId}`;
-    }
+  const match = url.trim().match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})/);
+  if (match) {
+    videoId = match[1];
   }
 
   if (!videoId) videoId = 'uw6etHCmu4g';
