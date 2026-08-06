@@ -105,11 +105,10 @@ export async function getDirectStreamUrl(youtubeUrl: string, audioOnly = true): 
 
   try {
     const bin = await ensureFreshYtDlp();
-    const format = audioOnly ? 'ba/b' : 'b/best[ext=mp4]/best';
+    const format = audioOnly ? 'bestaudio/b/best' : 'bestvideo+bestaudio/b/best';
     const args = [
       '--get-url',
       '-f', format,
-      '--extractor-args', 'youtube:player_client=ios,web,mweb',
       '--no-playlist',
       '--no-warnings',
       '--quiet',

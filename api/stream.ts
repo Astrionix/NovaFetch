@@ -72,8 +72,7 @@ async function getAudioUrl(youtubeUrl: string): Promise<string> {
 
   const { stdout, stderr } = await execFileAsync(bin, [
     '--get-url',
-    '-f', 'ba/b',
-    '--extractor-args', 'youtube:player_client=ios,web,mweb',
+    '-f', 'bestaudio/b/best',
     '--no-playlist',
     '--no-warnings',
     '--quiet',
