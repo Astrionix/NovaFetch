@@ -25,6 +25,22 @@ fastify.get('/api/health', async () => {
   return { status: 'online', engine: 'NovaFetch Fastify Node.js Engine v2.4', timestamp: new Date().toISOString() };
 });
 
+// Root API route
+fastify.get('/', async () => {
+  return {
+    status: 'online',
+    service: 'NovaFetch Fastify Media API',
+    version: '2.4.0',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/api/health',
+      analyze: 'POST /api/analyze',
+      stream: 'GET /api/stream?url=<youtube_url>',
+      download: 'GET /api/download?url=<youtube_url>'
+    }
+  };
+});
+
 // Start Server on Port 3001
 const start = async () => {
   try {
