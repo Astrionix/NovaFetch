@@ -1,81 +1,68 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, chmodSync, copyFileSync, readdirSync } from 'fs';
+import { existsSync, chmodSync, copyFileSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
 
-// __dirname is not available in ESM — derive it from import.meta.url
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // ── Find the yt-dlp binary ────────────────────────────────────────────────────
+// Verified paths from /api/debug endpoint:
+//   __dirname  = /var/task/api
+//   cwd        = /var/task
+//   Binary at  = /var/task/bin/yt-dlp_linux  (includeFiles: bin/**)
+//              = /var/task/node_modules/youtube-dl-exec/bin/yt-dlp  (npm postinstall)
 
 function getYtDlpPath(): string {
-  if (process.platform !== 'win32') {
-    const tmp = '/tmp/yt-dlp';
-    if (existsSync(tmp)) return tmp;
-
-    const cwd = process.cwd();
-    const dir = __dirname;
-
-    const candidates = [
-      path.join(cwd, 'node_modules/youtube-dl-exec/bin/yt-dlp'),
-      path.join(dir, '../node_modules/youtube-dl-exec/bin/yt-dlp'),
-      path.join(dir, 'node_modules/youtube-dl-exec/bin/yt-dlp'),
-      '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
-      path.join(cwd, 'bin/yt-dlp_linux'),
-      path.join(dir, '../bin/yt-dlp_linux'),
-      '/var/task/bin/yt-dlp_linux',
-    ];
-
-    const found = candidates.find(p => existsSync(p));
-
-    if (found) {
-      copyFileSync(found, tmp);
-      chmodSync(tmp, '755');
-      console.log('[stream] yt-dlp copied from', found);
-      return tmp;
-    }
-
-    // Debug: log filesystem to help diagnose
-    for (const d of [cwd, dir, '/var/task']) {
-      if (existsSync(d)) {
-        try { console.log('[stream] ls', d + ':', readdirSync(d).slice(0, 20).join(', ')); } catch { /* skip */ }
-      }
-    }
-
-    throw new Error('yt-dlp binary not found. cwd=' + cwd + ' Tried: ' + candidates.join(' | '));
+  // Windows local dev — use npm-installed exe
+  if (process.platform === 'win32') {
+    const winBin = path.join(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp.exe');
+    return existsSync(winBin) ? winBin : 'yt-dlp';
   }
 
-  // Windows local dev
-  const winCandidates = [
-    path.join(process.cwd(), 'node_modules/youtube-dl-exec/bin/yt-dlp.exe'),
-    path.join(__dirname, '../node_modules/youtube-dl-exec/bin/yt-dlp.exe'),
+  // Linux (Vercel) — cache in /tmp across warm invocations
+  const tmp = '/tmp/yt-dlp';
+  if (existsSync(tmp)) return tmp;
+
+  // Exact paths confirmed by /api/debug
+  const cwd = process.cwd();           // /var/task
+  const candidates = [
+    cwd + '/node_modules/youtube-dl-exec/bin/yt-dlp',  // /var/task/node_modules/...
+    cwd + '/bin/yt-dlp_linux',                          // /var/task/bin/yt-dlp_linux
+    '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
+    '/var/task/bin/yt-dlp_linux',
   ];
-  return winCandidates.find(p => existsSync(p)) ?? 'yt-dlp';
+
+  const found = candidates.find(p => existsSync(p));
+  if (!found) {
+    throw new Error('yt-dlp not found. cwd=' + cwd + ' candidates: ' + candidates.join(', '));
+  }
+
+  copyFileSync(found, tmp);
+  chmodSync(tmp, '755');
+  console.log('[stream] yt-dlp ready from', found);
+  return tmp;
 }
 
-// ── Extract audio URL ─────────────────────────────────────────────────────────
+// ── Extract audio URL via yt-dlp ──────────────────────────────────────────────
 
 async function getAudioUrl(youtubeUrl: string): Promise<string> {
   const bin = getYtDlpPath();
-  console.log('[stream] Using binary:', bin);
 
-  const { stdout, stderr } = await execFileAsync(
-    bin,
-    ['--get-url', '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-     '--no-playlist', '--no-warnings', '--quiet', youtubeUrl],
-    { timeout: 25000 }
-  );
+  const { stdout, stderr } = await execFileAsync(bin, [
+    '--get-url',
+    '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+    '--no-playlist',
+    '--no-warnings',
+    '--quiet',
+    youtubeUrl,
+  ], { timeout: 25000 });
 
-  if (stderr?.trim()) console.warn('[stream] yt-dlp stderr:', stderr.slice(0, 200));
+  if (stderr?.trim()) console.warn('[stream] yt-dlp stderr:', stderr.slice(0, 300));
 
   const url = stdout.trim().split('\n')[0];
   if (!url?.startsWith('http')) {
-    throw new Error('yt-dlp returned no valid URL. stdout=' + stdout.slice(0, 200));
+    throw new Error('yt-dlp returned no valid URL: ' + stdout.slice(0, 200));
   }
   return url;
 }
@@ -115,11 +102,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const audioUrl = await getAudioUrl(youtubeUrl);
-    console.log('[stream] Redirecting to CDN');
+    console.log('[stream] Redirecting to real CDN URL');
+    // 302 → browser <audio> streams directly from YouTube CDN
     return res.redirect(302, audioUrl);
   } catch (err) {
     const msg = (err as Error).message;
-    console.error('[stream] Failed:', msg);
+    console.error('[stream] Error:', msg);
     return res.status(502).json({ error: 'Could not extract audio stream', detail: msg });
   }
 }
