@@ -12,13 +12,14 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
-function createSampleWavBuffer(durationSeconds = 210, frequency = 440): Buffer {
-  const sampleRate = 44100;
+function createSampleWavBuffer(durationSeconds = 15, frequency = 440): Buffer {
+  const safeSeconds = Math.min(15, Math.max(3, durationSeconds));
+  const sampleRate = 22050;
   const numChannels = 2;
   const bytesPerSample = 2;
   const blockAlign = numChannels * bytesPerSample;
   const byteRate = sampleRate * blockAlign;
-  const numSamples = sampleRate * Math.max(5, durationSeconds);
+  const numSamples = sampleRate * safeSeconds;
   const dataSize = numSamples * blockAlign;
   const headerSize = 44;
 
@@ -40,11 +41,11 @@ function createSampleWavBuffer(durationSeconds = 210, frequency = 440): Buffer {
   let offset = headerSize;
   for (let i = 0; i < numSamples; i++) {
     const t = i / sampleRate;
-    const fade = Math.min(1, Math.min(t, durationSeconds - t) / 0.5);
+    const fade = Math.min(1, Math.min(t, safeSeconds - t) / 0.5);
     const sample = (
-      Math.sin(2 * Math.PI * frequency * t) * 0.20 +
-      Math.sin(2 * Math.PI * (frequency * 1.25) * t) * 0.12 +
-      Math.sin(2 * Math.PI * (frequency * 1.5) * t) * 0.08
+      Math.sin(2 * Math.PI * frequency * t) * 0.25 +
+      Math.sin(2 * Math.PI * (frequency * 1.25) * t) * 0.15 +
+      Math.sin(2 * Math.PI * (frequency * 1.5) * t) * 0.10
     ) * fade;
     const intSample = Math.max(-32768, Math.min(32767, Math.floor(sample * 32767)));
     buffer.writeInt16LE(intSample, offset);
