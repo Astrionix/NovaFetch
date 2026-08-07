@@ -20,14 +20,6 @@ fastify.addHook('onRequest', async (request, reply) => {
   reply.header('Access-Control-Allow-Private-Network', 'true');
 });
 
-// OPTIONS preflight route handler for all routes
-fastify.options('*', async (_request, reply) => {
-  reply.header('Access-Control-Allow-Origin', '*');
-  reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-  reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, Access-Control-Allow-Private-Network, X-Requested-With, Accept');
-  reply.header('Access-Control-Allow-Private-Network', 'true');
-  return reply.status(204).send();
-});
 
 // Register Media API Routes
 await fastify.register(mediaRoutes);
