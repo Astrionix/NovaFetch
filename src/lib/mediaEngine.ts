@@ -43,7 +43,9 @@ export async function analyzeMediaUrl(url: string): Promise<MediaMetadata> {
 
     if (response.ok) {
       const data = await response.json();
-      return data;
+      if (data && Array.isArray(data.formats) && data.formats.length > 0) {
+        return data;
+      }
     }
   } catch (err) {
     console.warn('[NovaFetch Engine] API analyze request failed or blocked by CORS/PNA, using client-side fallback:', err);

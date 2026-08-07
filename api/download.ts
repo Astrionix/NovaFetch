@@ -58,13 +58,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { url, extension = 'mp3', title = 'NovaFetch_Media', duration = '210' } = (req.query as { url?: string; extension?: string; title?: string; duration?: string }) || {};
 
-  if (url && typeof url === 'string') {
-    const renderDownloadUrl = `https://novafetch-c3jm.onrender.com/api/download?url=${encodeURIComponent(url)}&extension=${encodeURIComponent(extension)}&title=${encodeURIComponent(title)}`;
-    return res.redirect(302, renderDownloadUrl);
-  }
-
   const safeTitle = decodeURIComponent(title);
   const parsedDuration = parseInt(duration || '210', 10) || 210;
+
+  if (url && typeof url === 'string') {
+    const backendHost = process.env.BACKEND_API_URL || 'https://novafetch-c3jm.onrender.com';
+    const renderDownloadUrl = `${backendHost}/api/download?url=${encodeURIComponent(url)}&extension=${encodeURIComponent(extension)}&title=${encodeURIComponent(title)}`;
+    
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const renderRes = await fetch(renderDownloadUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (renderRes.ok && renderRes.body) {
+        res.setHeader('Content-Type', renderRes.headers.get('content-type') || (extension === 'mp4' ? 'video/mp4' : 'audio/webm'));
+        res.setHeader('Content-Disposition', renderRes.headers.get('content-disposition') || `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle + '.' + extension)}`);
+        const cl = renderRes.headers.get('content-length');
+        if (cl) res.setHeader('Content-Length', cl);
+
+        const arrayBuffer = await renderRes.arrayBuffer();
+        return res.status(200).send(Buffer.from(arrayBuffer));
+      }
+    } catch (_err) {
+      console.warn('[download] Backend proxy timed out or sleeping, serving WAV fallback');
+    }
+  }
 
   const wavBuffer = createSampleWavBuffer(parsedDuration, 440);
 

@@ -80,11 +80,11 @@ export function App() {
 
 
 
-  const filteredFormats = metadata?.formats.filter(fmt => {
+  const filteredFormats = (metadata?.formats || []).filter(fmt => {
     if (formatTab === 'audio') return fmt.type === 'audio';
     if (formatTab === 'video') return fmt.type === 'video';
     return true;
-  }) ?? [];
+  });
 
 
 
@@ -149,7 +149,7 @@ export function App() {
     try {
       const data = await analyzeMediaUrl(trimmed);
       setMetadata(data);
-      setSelectedFormat(data.formats[0] ?? null);
+      setSelectedFormat(data.formats?.[0] ?? null);
       setId3Tags({ title: data.title, artist: data.author, album: 'NovaFetch Studio' });
       setClipSettings({ enabled: false, startTime: 0, endTime: data.duration });
       setStage('ready');
@@ -172,7 +172,7 @@ export function App() {
       setBatchQueue(q => q.map((item, idx) => idx === i ? { ...item, stage: 'analyzing' } : item));
       try {
         const meta = await analyzeMediaUrl(queue[i].url);
-        setBatchQueue(q => q.map((item, idx) => idx === i ? { ...item, stage: 'ready', metadata: meta, selectedFormat: meta.formats[0] } : item));
+        setBatchQueue(q => q.map((item, idx) => idx === i ? { ...item, stage: 'ready', metadata: meta, selectedFormat: meta.formats?.[0] } : item));
       } catch {
         setBatchQueue(q => q.map((item, idx) => idx === i ? { ...item, stage: 'error', error: 'Analysis failed' } : item));
       }

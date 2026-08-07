@@ -7,14 +7,26 @@ const fastify = Fastify({ logger: true });
 // Register CORS with Private Network Access (PNA) header support
 await fastify.register(cors, {
   origin: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'Access-Control-Allow-Private-Network']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'Access-Control-Allow-Private-Network', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'Content-Length', 'Content-Disposition', 'Accept-Ranges']
 });
 
-// Add Hook for Chrome Private Network Access (PNA) preflight requests
+// Add Hook for Chrome Private Network Access (PNA) preflight requests and CORS headers
 fastify.addHook('onRequest', async (request, reply) => {
+  reply.header('Access-Control-Allow-Origin', request.headers.origin || '*');
+  reply.header('Access-Control-Allow-Credentials', 'true');
   reply.header('Access-Control-Allow-Private-Network', 'true');
+});
+
+// OPTIONS preflight route handler for all routes
+fastify.options('*', async (_request, reply) => {
+  reply.header('Access-Control-Allow-Origin', '*');
+  reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range, Access-Control-Allow-Private-Network, X-Requested-With, Accept');
+  reply.header('Access-Control-Allow-Private-Network', 'true');
+  return reply.status(204).send();
 });
 
 // Register Media API Routes
