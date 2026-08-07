@@ -32,10 +32,8 @@ export async function analyzeMediaUrl(url: string): Promise<MediaMetadata> {
   }
 
   const apiBase = getApiBaseUrl();
-  const endpointsToTry = [apiBase];
-  if (apiBase !== '/api') {
-    endpointsToTry.push('/api');
-  }
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const endpointsToTry = isLocalhost ? [apiBase] : ['/api', apiBase].filter((v, i, a) => a.indexOf(v) === i);
 
   for (const base of endpointsToTry) {
     try {

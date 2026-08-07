@@ -38,15 +38,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     let rawUrl = '';
     if (req.body) {
-      if (typeof req.body === 'string') {
+      let bodyData = req.body;
+      if (Buffer.isBuffer(bodyData)) {
         try {
-          const parsed = JSON.parse(req.body);
-          rawUrl = parsed?.url || req.body;
+          bodyData = JSON.parse(bodyData.toString('utf-8'));
         } catch {
-          rawUrl = req.body;
+          bodyData = bodyData.toString('utf-8');
         }
-      } else if (typeof req.body === 'object') {
-        rawUrl = (req.body as any)?.url || (req.body as any)?.id || '';
+      }
+      if (typeof bodyData === 'string') {
+        try {
+          const parsed = JSON.parse(bodyData);
+          rawUrl = parsed?.url || bodyData;
+        } catch {
+          rawUrl = bodyData;
+        }
+      } else if (typeof bodyData === 'object' && bodyData !== null) {
+        rawUrl = (bodyData as any)?.url || (bodyData as any)?.id || '';
       }
     }
 
