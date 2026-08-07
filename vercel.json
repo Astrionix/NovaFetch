@@ -6,13 +6,11 @@
   "functions": {
     "api/stream.ts": {
       "memory": 1024,
-      "maxDuration": 30,
-      "includeFiles": "node_modules/youtube-dl-exec/bin/**"
+      "maxDuration": 30
     },
     "api/download.ts": {
       "memory": 1024,
-      "maxDuration": 60,
-      "includeFiles": "node_modules/youtube-dl-exec/bin/**"
+      "maxDuration": 60
     },
     "api/analyze.ts": {
       "memory": 512,
@@ -21,23 +19,7 @@
   },
   "rewrites": [
     {
-      "source": "/api/analyze",
-      "destination": "/api/analyze.ts"
-    },
-    {
-      "source": "/api/stream",
-      "destination": "/api/stream.ts"
-    },
-    {
-      "source": "/api/download",
-      "destination": "/api/download.ts"
-    },
-    {
-      "source": "/api/debug",
-      "destination": "/api/debug.ts"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
