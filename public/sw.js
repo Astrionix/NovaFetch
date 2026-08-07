@@ -1,4 +1,4 @@
-const CACHE_NAME = 'novafetch-shell-v2';
+const CACHE_NAME = 'novafetch-shell-v3';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -8,11 +8,11 @@ const SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Pre-caching offline shell');
       return cache.addAll(SHELL_ASSETS);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -34,12 +34,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip chrome-extension:// or non-HTTP(S) requests to prevent Cache API exceptions
+  // Skip chrome-extension:// or non-HTTP(S) requests
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return;
   }
 
-  // For API endpoints, try network only or return JSON error if offline
+  // API endpoints: network only, never cache
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(event.request).catch(() => {
@@ -52,22 +52,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For static shell assets: Stale-While-Revalidate
+  const isStaticAsset = url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname.includes('/assets/');
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+      if (cachedResponse) {
+        // If a JS/CSS file was cached with invalid text/html content-type, discard bad cache
+        const contentType = cachedResponse.headers.get('content-type') || '';
+        if (isStaticAsset && contentType.includes('text/html')) {
+          console.warn('[SW] Purging corrupted text/html asset cache for:', url.pathname);
+          return fetch(event.request);
         }
-        return networkResponse;
-      }).catch(() => {
-        // Network failed
-      });
-
-      return cachedResponse || fetchPromise;
+        return cachedResponse;
+      }
+      return fetch(event.request);
     })
   );
 });
