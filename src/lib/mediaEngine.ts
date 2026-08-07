@@ -31,24 +31,31 @@ export async function analyzeMediaUrl(url: string): Promise<MediaMetadata> {
     return matchedPreset.data;
   }
 
-  try {
-    const apiBase = getApiBaseUrl();
-    const response = await fetch(`${apiBase}/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ url: trimmedUrl })
-    });
+  const apiBase = getApiBaseUrl();
+  const endpointsToTry = [apiBase];
+  if (apiBase !== '/api') {
+    endpointsToTry.push('/api');
+  }
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data && Array.isArray(data.formats) && data.formats.length > 0) {
-        return data;
+  for (const base of endpointsToTry) {
+    try {
+      const response = await fetch(`${base}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ url: trimmedUrl })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.formats) && data.formats.length > 0) {
+          return data;
+        }
       }
+    } catch (err) {
+      console.warn(`[NovaFetch Engine] API analyze request failed at ${base}:`, err);
     }
-  } catch (err) {
-    console.warn('[NovaFetch Engine] API analyze request failed or blocked by CORS/PNA, using client-side fallback:', err);
   }
 
   // Fast client-side fallback analyzer
